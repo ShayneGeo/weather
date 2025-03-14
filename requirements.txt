@@ -1,0 +1,13 @@
+streamlit
+folium
+requests
+pandas
+s3fs
+numcodecs
+numpy
+xarray
+cartopy
+matplotlib
+pytz
+timezonefinder
+astral
