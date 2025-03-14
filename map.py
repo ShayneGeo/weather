@@ -6,7 +6,7 @@ from streamlit_folium import st_folium
 
 # Note: For small TIFF files, you can include them in your Git repository (e.g., in a "data" folder).
 # For larger files, consider using Git LFS or hosting them externally.
-tif_path = "data/your_file.tif"
+tif_path = "pcltile_70000-40000.tif"
 
 def load_tif(tif_path):
     with rasterio.open(tif_path) as src:
