@@ -12,3 +12,7 @@ matplotlib
 pytz
 timezonefinder
 astral
+xarray
+zarr
+s3fs
+fsspec
