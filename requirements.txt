@@ -1,4 +1,3 @@
-streamlit
 folium
 requests
 pandas
@@ -11,3 +10,6 @@ matplotlib
 pytz
 timezonefinder
 astral
+streamlit==1.39.0
+streamlit-aggrid==1.1.1
+streamlit_folium==0.23.1
