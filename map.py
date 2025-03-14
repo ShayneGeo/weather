@@ -38,7 +38,7 @@ if show_tiff:
 
     # Save the image temporarily
     with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as temp_img:
-        plt.imsave(temp_img.name, image, cmap='gray')  # Save as grayscale PNG
+        plt.imsave(temp_img.name, image, cmap='viridis')  # Save as grayscale PNG
         temp_img_path = temp_img.name
 
     # Add the overlay to folium
@@ -46,7 +46,7 @@ if show_tiff:
         name="TIFF Overlay",
         image=temp_img_path,
         bounds=[[bounds.bottom, bounds.left], [bounds.top, bounds.right]],
-        opacity=0.6
+        opacity=1.0
     ).add_to(m)
     
     folium.LayerControl().add_to(m)
