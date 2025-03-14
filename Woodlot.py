@@ -1,3 +1,4 @@
+
 import streamlit as st
 import requests
 import pandas as pd
@@ -7,11 +8,11 @@ import numpy as np
 import datetime
 import xarray as xr
 import cartopy.crs as ccrs
+import matplotlib.pyplot as plt
 import pytz
 from timezonefinder import TimezoneFinder
 from astral import LocationInfo
 from astral.sun import sun
-import plotly.graph_objects as go
 
 # ---------------------------
 # PAGE CONFIG & TITLE
@@ -22,8 +23,8 @@ st.title("NOAA Weather + HRRR Forecast (Local Time)")
 # ----------------------------------
 # Default Coordinates (automatically used)
 # ----------------------------------
-default_lat = 40.655454
-default_lon = -105.309188
+default_lat = 40.65
+default_lon = -105.307
 
 # --------------------------
 # 1. NOAA Forecast Retrieval
@@ -202,49 +203,49 @@ with st.spinner("Retrieving last 5 HRRR forecast cycles (no analysis)..."):
         forecast_values = forecast_data[:, nearest_point.in_chunk_y, nearest_point.in_chunk_x]
         all_forecast_rh.append((init_time_utc, valid_times_local, forecast_values))
 
-# ======================================================
-# Create Interactive Plotly Charts (Zoomable on Mobile)
-# ======================================================
-
-# --------
-# GUST Chart (mph)
-# --------
-fig_gust = go.Figure()
+# -----------------------------
+# FIRST PLOT: GUST
+# -----------------------------
+fig, ax = plt.subplots(figsize=(10, 5))
+ax.set_title(
+    f'HRRR {var_gust} (mph) Forecasts [Local Time]\nLat={default_lat:.2f}, Lon={default_lon:.2f} | Last 5 Cycles'
+)
+ax.set_xlabel('Valid Time (Local)')
+ax.set_ylabel(f'{var_gust} (mph)')
 colors = [
     "#7A0000","#D4A017","#001F3F","#6F4518","#FF4500","#9400D3",
     "#708090","#2E8B57","#8B0000","#FFD700","#556B2F","#DC143C",
     "#4682B4","#F4A460","#A9A9A9","#5F9EA0","#FF6347"
 ]
 conv_factor_mps_to_mph = 2.23694
+max_fcst_val_gust = 0
 all_times = []
 for i, (init_time_utc, vtimes_local, fvalues) in enumerate(all_forecast_gust):
     fvalues_mph = fvalues * conv_factor_mps_to_mph
-    times_str = [vt.isoformat() for vt in vtimes_local]
-    fig_gust.add_trace(go.Scatter(
-        x=times_str,
-        y=fvalues_mph,
-        mode='lines+markers',
-        name=f'Init {init_time_utc.astimezone(local_tz).strftime("%m-%d %H:%M %Z")}',
-        line=dict(color=colors[i % len(colors)])
-    ))
+    if len(fvalues_mph) > 0:
+        max_fcst_val_gust = max(max_fcst_val_gust, np.nanmax(fvalues_mph))
+    color = colors[i % len(colors)]
+    init_time_local_str = init_time_utc.astimezone(local_tz).strftime("%m-%d %H:%M %Z")
+    ax.plot(
+        vtimes_local, fvalues_mph,
+        color=color, marker='x', linestyle='-',
+        label=f'Init {init_time_local_str}'
+    )
     all_times.extend(vtimes_local)
-
-# Vertical line for "Now"
-fig_gust.add_shape(type="line",
-    xref="x", yref="paper",
-    x0=now_local.isoformat(), x1=now_local.isoformat(),
-    y0=0, y1=1,
-    line=dict(color="black", dash="dot")
-)
-
-# Nighttime shading using sunrise/sunset
+ax.axvline(x=now_local, color='black', linestyle=':', label='Now')
 if all_times:
     earliest_time = min(all_times)
     latest_time = max(all_times)
-    location = LocationInfo(name="HRRR Location", region="", timezone=local_tz_name,
-                            latitude=default_lat, longitude=default_lon)
+    location = LocationInfo(
+        name="HRRR Location",
+        region="",
+        timezone=local_tz_name,
+        latitude=default_lat,
+        longitude=default_lon
+    )
     current_date = earliest_time.date()
     last_date = latest_time.date()
+    label_used = False
     while current_date <= last_date:
         s = sun(location.observer, date=current_date, tzinfo=local_tz)
         next_date = current_date + datetime.timedelta(days=1)
@@ -254,146 +255,162 @@ if all_times:
         shade_start = max(today_sunset, earliest_time)
         shade_end = min(tomorrow_sunrise, latest_time)
         if shade_start < shade_end:
-            fig_gust.add_shape(
-                type="rect",
-                xref="x", yref="paper",
-                x0=shade_start.isoformat(), x1=shade_end.isoformat(),
-                y0=0, y1=1,
-                fillcolor="lightgray",
-                opacity=0.3,
-                line_width=0
+            ax.axvspan(
+                shade_start, shade_end,
+                facecolor='lightgray', alpha=0.3,
+                label='Nighttime' if not label_used else ""
             )
+            label_used = True
         current_date = next_date
-
-fig_gust.update_layout(
-    title=f'HRRR {var_gust} (mph) Forecasts [Local Time] | Lat={default_lat:.2f}, Lon={default_lon:.2f}',
-    xaxis_title="Valid Time (Local)",
-    yaxis_title=f"{var_gust} (mph)",
-    hovermode="x unified"
-)
-st.plotly_chart(fig_gust, use_container_width=True)
+ax.set_ylim(0, max_fcst_val_gust + 5 if max_fcst_val_gust else 10)
+ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+ax.grid(True)
+fig.autofmt_xdate(rotation=45)
+st.pyplot(fig)
 st.success("HRRR GUST forecasts (Local Time)!")
 
-# --------
-# Temperature Chart (°F)
-# --------
-fig_temp = go.Figure()
-all_times_temp = []
-for i, (init_time_utc, vtimes_local, fvalues) in enumerate(all_forecast_tmp):
-    # Convert Kelvin to Fahrenheit
-    temp_values_f = (fvalues - 273.15) * 9/5 + 32
-    times_str = [vt.isoformat() for vt in vtimes_local]
-    fig_temp.add_trace(go.Scatter(
-        x=times_str,
-        y=temp_values_f,
-        mode='lines+markers',
-        name=f'Init {init_time_utc.astimezone(local_tz).strftime("%m-%d %H:%M %Z")}',
-        line=dict(color=colors[i % len(colors)])
-    ))
-    all_times_temp.extend(vtimes_local)
+# -----------------------------
+# SECOND PLOT: TMP (Fahrenheit)
+# -----------------------------
+with st.spinner("Plotting HRRR temperature..."):
+    fig2, ax2 = plt.subplots(figsize=(10, 5))
+    ax2.set_title(
+        f'HRRR {var_temp} (°F) Forecasts [Local Time]\nLat={default_lat:.2f}, Lon={default_lon:.2f} | Last 5 Cycles'
+    )
+    ax2.set_xlabel('Valid Time (Local)')
+    ax2.set_ylabel(f'{var_temp} (°F)')
+    colors_tmp = [
+        "#7A0000","#D4A017","#001F3F","#6F4518","#FF4500","#9400D3",
+        "#708090","#2E8B57","#8B0000","#FFD700","#556B2F","#DC143C",
+        "#4682B4","#F4A460","#A9A9A9","#5F9EA0","#FF6347"
+    ]
+    max_fcst_val_tmp = None
+    min_fcst_val_tmp = None
+    all_times_tmp = []
+    for i, (init_time_utc, vtimes_local, fvalues) in enumerate(all_forecast_tmp):
+        temp_values_f = (fvalues - 273.15) * 9/5 + 32
+        if len(temp_values_f) > 0:
+            local_min = np.nanmin(temp_values_f)
+            local_max = np.nanmax(temp_values_f)
+            if min_fcst_val_tmp is None or local_min < min_fcst_val_tmp:
+                min_fcst_val_tmp = local_min
+            if max_fcst_val_tmp is None or local_max > max_fcst_val_tmp:
+                max_fcst_val_tmp = local_max
+        color = colors_tmp[i % len(colors_tmp)]
+        init_time_local_str = init_time_utc.astimezone(local_tz).strftime("%m-%d %H:%M %Z")
+        ax2.plot(
+            vtimes_local, temp_values_f,
+            color=color, marker='x', linestyle='-',
+            label=f'Init {init_time_local_str}'
+        )
+        all_times_tmp.extend(vtimes_local)
+    ax2.axvline(x=now_local, color='black', linestyle=':', label='Now')
+    if all_times_tmp:
+        earliest_time = min(all_times_tmp)
+        latest_time = max(all_times_tmp)
+        location = LocationInfo(
+            name="HRRR Location",
+            region="",
+            timezone=local_tz_name,
+            latitude=default_lat,
+            longitude=default_lon
+        )
+        current_date = earliest_time.date()
+        last_date = latest_time.date()
+        label_used = False
+        while current_date <= last_date:
+            s = sun(location.observer, date=current_date, tzinfo=local_tz)
+            next_date = current_date + datetime.timedelta(days=1)
+            s_next = sun(location.observer, date=next_date, tzinfo=local_tz)
+            today_sunset = s['sunset']
+            tomorrow_sunrise = s_next['sunrise']
+            shade_start = max(today_sunset, earliest_time)
+            shade_end = min(tomorrow_sunrise, latest_time)
+            if shade_start < shade_end:
+                ax2.axvspan(
+                    shade_start, shade_end,
+                    facecolor='lightgray', alpha=0.3,
+                    label='Nighttime' if not label_used else ""
+                )
+                label_used = True
+            current_date = next_date
+    if max_fcst_val_tmp is not None:
+        ax2.set_ylim(min_fcst_val_tmp - 10, max_fcst_val_tmp + 10)
+    else:
+        ax2.set_ylim(0, 100)
+    ax2.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+    ax2.grid(True)
+    fig2.autofmt_xdate(rotation=45)
+    st.pyplot(fig2)
+    st.success("HRRR Temperature (F) forecasts (Local Time)!")
 
-# Vertical line for "Now"
-fig_temp.add_shape(type="line",
-    xref="x", yref="paper",
-    x0=now_local.isoformat(), x1=now_local.isoformat(),
-    y0=0, y1=1,
-    line=dict(color="black", dash="dot")
-)
-
-# Nighttime shading
-if all_times_temp:
-    earliest_time = min(all_times_temp)
-    latest_time = max(all_times_temp)
-    location = LocationInfo(name="HRRR Location", region="", timezone=local_tz_name,
-                            latitude=default_lat, longitude=default_lon)
-    current_date = earliest_time.date()
-    last_date = latest_time.date()
-    while current_date <= last_date:
-        s = sun(location.observer, date=current_date, tzinfo=local_tz)
-        next_date = current_date + datetime.timedelta(days=1)
-        s_next = sun(location.observer, date=next_date, tzinfo=local_tz)
-        today_sunset = s['sunset']
-        tomorrow_sunrise = s_next['sunrise']
-        shade_start = max(today_sunset, earliest_time)
-        shade_end = min(tomorrow_sunrise, latest_time)
-        if shade_start < shade_end:
-            fig_temp.add_shape(
-                type="rect",
-                xref="x", yref="paper",
-                x0=shade_start.isoformat(), x1=shade_end.isoformat(),
-                y0=0, y1=1,
-                fillcolor="lightgray",
-                opacity=0.3,
-                line_width=0
-            )
-        current_date = next_date
-
-fig_temp.update_layout(
-    title=f'HRRR {var_temp} (°F) Forecasts [Local Time] | Lat={default_lat:.2f}, Lon={default_lon:.2f}',
-    xaxis_title="Valid Time (Local)",
-    yaxis_title=f"{var_temp} (°F)",
-    hovermode="x unified"
-)
-st.plotly_chart(fig_temp, use_container_width=True)
-st.success("HRRR Temperature (F) forecasts (Local Time)!")
-
-# --------
-# Relative Humidity Chart (%)
-# --------
-fig_rh = go.Figure()
-all_times_rh = []
-for i, (init_time_utc, vtimes_local, fvalues) in enumerate(all_forecast_rh):
-    times_str = [vt.isoformat() for vt in vtimes_local]
-    fig_rh.add_trace(go.Scatter(
-        x=times_str,
-        y=fvalues,
-        mode='lines+markers',
-        name=f'Init {init_time_utc.astimezone(local_tz).strftime("%m-%d %H:%M %Z")}',
-        line=dict(color=colors[i % len(colors)])
-    ))
-    all_times_rh.extend(vtimes_local)
-
-# Vertical line for "Now"
-fig_rh.add_shape(type="line",
-    xref="x", yref="paper",
-    x0=now_local.isoformat(), x1=now_local.isoformat(),
-    y0=0, y1=1,
-    line=dict(color="black", dash="dot")
-)
-
-# Nighttime shading
-if all_times_rh:
-    earliest_time = min(all_times_rh)
-    latest_time = max(all_times_rh)
-    location = LocationInfo(name="HRRR Location", region="", timezone=local_tz_name,
-                            latitude=default_lat, longitude=default_lon)
-    current_date = earliest_time.date()
-    last_date = latest_time.date()
-    while current_date <= last_date:
-        s = sun(location.observer, date=current_date, tzinfo=local_tz)
-        next_date = current_date + datetime.timedelta(days=1)
-        s_next = sun(location.observer, date=next_date, tzinfo=local_tz)
-        today_sunset = s['sunset']
-        tomorrow_sunrise = s_next['sunrise']
-        shade_start = max(today_sunset, earliest_time)
-        shade_end = min(tomorrow_sunrise, latest_time)
-        if shade_start < shade_end:
-            fig_rh.add_shape(
-                type="rect",
-                xref="x", yref="paper",
-                x0=shade_start.isoformat(), x1=shade_end.isoformat(),
-                y0=0, y1=1,
-                fillcolor="lightgray",
-                opacity=0.3,
-                line_width=0
-            )
-        current_date = next_date
-
-fig_rh.update_layout(
-    title=f'HRRR {var_rh} (%) Forecasts [Local Time] | Lat={default_lat:.2f}, Lon={default_lon:.2f}',
-    xaxis_title="Valid Time (Local)",
-    yaxis_title=f"{var_rh} (%)",
-    hovermode="x unified"
-)
-st.plotly_chart(fig_rh, use_container_width=True)
-st.success("HRRR Relative Humidity (%) forecasts (Local Time)!")
+# -----------------------------
+# THIRD PLOT: RH (%)
+# -----------------------------
+with st.spinner("Plotting HRRR Relative Humidity..."):
+    fig3, ax3 = plt.subplots(figsize=(10, 5))
+    ax3.set_title(
+        f'HRRR {var_rh} (%) Forecasts [Local Time]\nLat={default_lat:.2f}, Lon={default_lon:.2f} | Last 5 Cycles'
+    )
+    ax3.set_xlabel('Valid Time (Local)')
+    ax3.set_ylabel(f'{var_rh} (%)')
+    colors_rh = [
+        "#7A0000","#D4A017","#001F3F","#6F4518","#FF4500","#9400D3",
+        "#708090","#2E8B57","#8B0000","#FFD700","#556B2F","#DC143C",
+        "#4682B4","#F4A460","#A9A9A9","#5F9EA0","#FF6347"
+    ]
+    max_fcst_val_rh = None
+    all_times_rh = []
+    for i, (init_time_utc, vtimes_local, fvalues) in enumerate(all_forecast_rh):
+        rh_values = fvalues
+        if len(rh_values) > 0:
+            local_max = np.nanmax(rh_values)
+            if max_fcst_val_rh is None or local_max > max_fcst_val_rh:
+                max_fcst_val_rh = local_max
+        color = colors_rh[i % len(colors_rh)]
+        init_time_local_str = init_time_utc.astimezone(local_tz).strftime("%m-%d %H:%M %Z")
+        ax3.plot(
+            vtimes_local, rh_values,
+            color=color, marker='x', linestyle='-',
+            label=f'Init {init_time_local_str}'
+        )
+        all_times_rh.extend(vtimes_local)
+    ax3.axvline(x=now_local, color='black', linestyle=':', label='Now')
+    if all_times_rh:
+        earliest_time = min(all_times_rh)
+        latest_time = max(all_times_rh)
+        location = LocationInfo(
+            name="HRRR Location",
+            region="",
+            timezone=local_tz_name,
+            latitude=default_lat,
+            longitude=default_lon
+        )
+        current_date = earliest_time.date()
+        last_date = latest_time.date()
+        label_used = False
+        while current_date <= last_date:
+            s = sun(location.observer, date=current_date, tzinfo=local_tz)
+            next_date = current_date + datetime.timedelta(days=1)
+            s_next = sun(location.observer, date=next_date, tzinfo=local_tz)
+            today_sunset = s['sunset']
+            tomorrow_sunrise = s_next['sunrise']
+            shade_start = max(today_sunset, earliest_time)
+            shade_end = min(tomorrow_sunrise, latest_time)
+            if shade_start < shade_end:
+                ax3.axvspan(
+                    shade_start, shade_end,
+                    facecolor='lightgray', alpha=0.3,
+                    label='Nighttime' if not label_used else ""
+                )
+                label_used = True
+            current_date = next_date
+    if max_fcst_val_rh is not None:
+        ax3.set_ylim(0, min(max_fcst_val_rh + 10, 100))
+    else:
+        ax3.set_ylim(0, 100)
+    ax3.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+    ax3.grid(True)
+    fig3.autofmt_xdate(rotation=45)
+    st.pyplot(fig3)
+    st.success("HRRR Relative Humidity (%) forecasts (Local Time)!")
