@@ -205,58 +205,106 @@ import streamlit as st
 import folium
 import rasterio
 import numpy as np
-from streamlit_folium import st_folium
 import matplotlib.pyplot as plt
 import tempfile
 import os
 
-tif_path = "pcltile_70000-40000.tif"
+from rasterio.warp import transform_bounds, calculate_default_transform, reproject, Resampling
+from streamlit_folium import st_folium
 
-def load_tif(tif_path, num_quantiles=5):
+# ---------------------------------------------------------------------------
+# 1) FORCE REPROJECT THE TIFF TO EPSG:4326 (Lat/Lon) EVEN IF IT CLAIMS TO BE WGS84
+#    This helps fix bounding-box issues when the file is actually in a projected system.
+# ---------------------------------------------------------------------------
+def reproject_to_wgs84(input_path, output_path="reprojected.tif"):
+    with rasterio.open(input_path) as src:
+        # If it's really EPSG:4326, this won't harm anything
+        dst_crs = "EPSG:4326"
+
+        transform, width, height = calculate_default_transform(
+            src.crs, dst_crs, src.width, src.height, *src.bounds
+        )
+        kwargs = src.meta.copy()
+        kwargs.update({
+            "crs": dst_crs,
+            "transform": transform,
+            "width": width,
+            "height": height
+        })
+
+        with rasterio.open(output_path, "w", **kwargs) as dst:
+            for i in range(1, src.count + 1):
+                reproject(
+                    source=rasterio.band(src, i),
+                    destination=rasterio.band(dst, i),
+                    src_transform=src.transform,
+                    src_crs=src.crs,
+                    dst_transform=transform,
+                    dst_crs=dst_crs,
+                    resampling=Resampling.bilinear
+                )
+    return output_path
+
+# ---------------------------------------------------------------------------
+# 2) LOAD SINGLE-BAND, QUANTILE IT, RETURN ARRAY AND BOUNDS
+# ---------------------------------------------------------------------------
+def load_tif_quantile(tif_path, num_quantiles=5):
     """
-    Load a single-band (grayscale) TIFF in EPSG:4326, 
-    apply quantile binning, and return the quantized image array and native bounds.
+    Load a single-band TIFF now guaranteed to be in EPSG:4326,
+    apply quantile binning, and return (quantized_image, bounds).
     """
     with rasterio.open(tif_path) as src:
-        # Confirm that the CRS is EPSG:4326
-        print("Raster CRS:", src.crs)
+        # Confirm final CRS is EPSG:4326
+        st.write("Reprojected/Checked CRS:", src.crs)
         image = src.read(1)  # Single band
-        bounds = src.bounds  # Already in Lat/Lon if EPSG:4326
+        # The bounds below are in lat/lon if src.crs == EPSG:4326
+        bounds = src.bounds
 
-    # Compute quantiles (ignore zero if it's NoData)
+    # Quantile binning (ignore <= 0 if that's NoData)
     valid_pixels = image[image > 0]
-    quantiles = np.percentile(valid_pixels, np.linspace(0, 100, num_quantiles + 1))
-    # Bin the pixel values according to these quantiles
-    quantized_image = np.digitize(image, bins=quantiles, right=True) - 1
-    # Scale to 0-255 for display
-    quantized_image = (255 * (quantized_image / (num_quantiles - 1))).astype(np.uint8)
+    if len(valid_pixels) == 0:
+        # Edge case: if entire raster is zero or negative
+        # Just return as-is
+        quantized_image = image.astype(np.uint8)
+    else:
+        quantiles = np.percentile(valid_pixels, np.linspace(0, 100, num_quantiles + 1))
+        quantized_image = np.digitize(image, bins=quantiles, right=True) - 1
+        # Normalize to 0-255
+        quantized_image = (255 * (quantized_image / (num_quantiles - 1))).astype(np.uint8)
 
     return quantized_image, bounds
 
-st.title("TIFF Overlay (EPSG:4326)")
+# ---------------------------------------------------------------------------
+# MAIN STREAMLIT APP
+# ---------------------------------------------------------------------------
+st.title("TIFF Overlay (Force-Reprojected to EPSG:4326)")
 
-# Checkbox to show/hide the TIFF overlay
+# Input TIFF (replace with your file if needed)
+original_tif_path = "pcltile_70000-40000.tif"
+
+# 1) Force reproject the data to EPSG:4326 in case it's not truly lat/lon
+reprojected_tif = reproject_to_wgs84(original_tif_path)
+
+# 2) Load and quantize
+image, bounds = load_tif_quantile(reprojected_tif, num_quantiles=5)
+
+# 3) Compute center
+lat_center = (bounds.top + bounds.bottom) / 2
+lon_center = (bounds.left + bounds.right) / 2
+
+# 4) Create Folium map (using default Web Mercator tiles)
+m = folium.Map(location=[lat_center, lon_center], zoom_start=12)
+
+# Toggle overlay
 show_tiff = st.checkbox("Show TIFF overlay", value=True)
 if show_tiff:
-    # Load the TIFF (already in EPSG:4326) and get its bounds
-    image, bounds = load_tif(tif_path, num_quantiles=5)
-
-    # Calculate the center of the raster in lat/lon
-    lat_center = (bounds.top + bounds.bottom) / 2
-    lon_center = (bounds.left + bounds.right) / 2
-
-    # Create a Folium map specifying EPSG:4326 so it won't internally project to Web Mercator
-    m = folium.Map(location=[lat_center, lon_center],
-                   zoom_start=12,
-                   crs="EPSG4326",        # Keep everything in WGS84
-                   tiles="OpenStreetMap")  # You can change or remove this if you like
-
-    # Write the quantized array to a temporary PNG using Viridis
+    # Save our quantized array to a temp PNG with Viridis
     with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as temp_img:
         plt.imsave(temp_img.name, image, cmap="viridis")
         temp_img_path = temp_img.name
 
-    # Use the original bounds (already in lat-lon) for the overlay
+    # 5) Add raster overlay to Folium
+    #    The bounding box is in lat/lon because we reprojected above.
     folium.raster_layers.ImageOverlay(
         name="TIFF Overlay",
         image=temp_img_path,
@@ -266,10 +314,15 @@ if show_tiff:
 
     folium.LayerControl().add_to(m)
 
-    # Show the map in Streamlit
-    st_folium(m, width=700, height=500)
+# 6) Show it in Streamlit
+st_folium(m, width=700, height=500)
 
-    # Clean up temp file
+# 7) Clean up temporary image
+if os.path.exists(temp_img_path):
     os.remove(temp_img_path)
+
+# 8) Clean up reprojected TIFF if desired
+if os.path.exists(reprojected_tif):
+    os.remove(reprojected_tif)
 
 
