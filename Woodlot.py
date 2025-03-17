@@ -556,7 +556,7 @@ with st.spinner("Retrieving NOAA forecast..."):
 
                 forecast_list.append({
                     "Day": display_day,
-                    "Date & Time": start_dt.strftime('%B %d, %Y %I:%M %p"),
+                    "Date & Time": start_dt.strftime('%B %d, %Y %I:%M %p'),
                     "Short Forecast": short_forecast,
                     "Detailed Forecast": detailedForecast,
                     "Temperature": f"{temperature} {temperature_unit}" if temperature and temperature_unit else "N/A",
