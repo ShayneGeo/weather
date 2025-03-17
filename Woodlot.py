@@ -504,7 +504,6 @@
 #         st.error(f"Failed to retrieve location data from NOAA. Status {response.status_code}")
 
 
-
 import streamlit as st
 import requests
 import pandas as pd
@@ -541,8 +540,8 @@ with st.spinner("Retrieving NOAA forecast..."):
                 start_dt = datetime.datetime.fromisoformat(startTime[:-6])
                 day_of_week = start_dt.strftime("%A")
 
-                # Check if it's a night period and append "Overnight"
-                if "Night" in period["name"]:
+                # Convert "Monday Night" to "Monday Overnight"
+                if period["name"].endswith("Night"):
                     display_day = f"{day_of_week} Overnight"
                 else:
                     display_day = day_of_week
