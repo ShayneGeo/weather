@@ -416,20 +416,99 @@
 #     st.success("HRRR Relative Humidity (%) forecasts (Local Time)!")
 
 
+# import streamlit as st
+# import requests
+# import pandas as pd
+# import s3fs
+# import numcodecs as ncd
+# import numpy as np
+# import datetime
+# import xarray as xr
+# import cartopy.crs as ccrs
+# import matplotlib.pyplot as plt
+# import pytz
+# from timezonefinder import TimezoneFinder
+# from astral import LocationInfo
+# from astral.sun import sun
+
+# # ---------------------------
+# # PAGE CONFIG & TITLE
+# # ---------------------------
+# st.set_page_config(layout="centered")
+# st.title("NOAA Weather + HRRR Forecast (Local Time)")
+
+# # ----------------------------------
+# # Default Coordinates (automatically used)
+# # ----------------------------------
+# default_lat = 40.65
+# default_lon = -105.307
+
+# # --------------------------
+# # 1. NOAA Forecast Retrieval
+# # --------------------------
+# with st.spinner("Retrieving NOAA forecast..."):
+#     base_url = f"https://api.weather.gov/points/{default_lat},{default_lon}"
+#     response = requests.get(base_url)
+#     if response.status_code == 200:
+#         noaa_data = response.json()
+#         forecast_url = noaa_data["properties"]["forecast"]
+#         forecast_response = requests.get(forecast_url)
+#         if forecast_response.status_code == 200:
+#             forecast_data = forecast_response.json()
+#             forecast_list = []
+#             for period in forecast_data["properties"]["periods"]:
+#                 startTime = period["startTime"]
+#                 detailedForecast = period["detailedForecast"]
+#                 start_dt = datetime.datetime.fromisoformat(startTime[:-6])
+#                 day_of_week = start_dt.strftime("%A")
+#                 temperature = period.get('temperature')
+#                 temperature_unit = period.get('temperatureUnit')
+#                 wind_speed = period.get('windSpeed')
+#                 wind_direction = period.get('windDirection')
+#                 short_forecast = period.get('shortForecast')
+#                 prob_precip = period.get('probabilityOfPrecipitation', {}).get('value')
+#                 forecast_list.append({
+#                     "Day": day_of_week,
+#                     "Date & Time": start_dt.strftime('%B %d, %Y %I:%M %p'),
+#                     "Short Forecast": short_forecast,
+#                     "Detailed Forecast": detailedForecast,
+#                     "Temperature": f"{temperature} {temperature_unit}" if temperature and temperature_unit else "N/A",
+#                     "Wind Speed": wind_speed,
+#                     "Wind Direction": wind_direction,
+#                     "Precipitation Chance (%)": prob_precip if prob_precip is not None else "N/A"
+#                 })
+#             forecast_df = pd.DataFrame(forecast_list)
+#             columns_order = [
+#                 "Day", "Date & Time", "Short Forecast", "Detailed Forecast",
+#                 "Temperature", "Wind Speed", "Wind Direction", "Precipitation Chance (%)"
+#             ]
+#             forecast_df = forecast_df[columns_order]
+#             st.success("NOAA forecast retrieved successfully!")
+
+#             # Display forecast
+#             for idx, row in forecast_df.iterrows():
+#                 # Display Date & Time with Short Forecast directly below it
+#                 st.markdown(f"### {row['Day']} - {row['Date & Time']}")
+#                 st.markdown(f"**Short Forecast:** {row['Short Forecast']}")
+
+#                 # Expander for more details
+#                 with st.expander("More Details"):
+#                     st.markdown(f"**Detailed Forecast:** {row['Detailed Forecast']}")
+#                     st.markdown(f"**Temperature:** {row['Temperature']}")
+#                     st.markdown(f"**Wind Speed:** {row['Wind Speed']}")
+#                     st.markdown(f"**Wind Direction:** {row['Wind Direction']}")
+#                     st.markdown(f"**Precipitation Chance (%):** {row['Precipitation Chance (%)']}")
+#         else:
+#             st.error(f"Failed to retrieve NOAA forecast. Status {forecast_response.status_code}")
+#     else:
+#         st.error(f"Failed to retrieve location data from NOAA. Status {response.status_code}")
+
+
+
 import streamlit as st
 import requests
 import pandas as pd
-import s3fs
-import numcodecs as ncd
-import numpy as np
 import datetime
-import xarray as xr
-import cartopy.crs as ccrs
-import matplotlib.pyplot as plt
-import pytz
-from timezonefinder import TimezoneFinder
-from astral import LocationInfo
-from astral.sun import sun
 
 # ---------------------------
 # PAGE CONFIG & TITLE
@@ -461,14 +540,22 @@ with st.spinner("Retrieving NOAA forecast..."):
                 detailedForecast = period["detailedForecast"]
                 start_dt = datetime.datetime.fromisoformat(startTime[:-6])
                 day_of_week = start_dt.strftime("%A")
+
+                # Check if it's a night period and append "Overnight"
+                if "Night" in period["name"]:
+                    display_day = f"{day_of_week} Overnight"
+                else:
+                    display_day = day_of_week
+
                 temperature = period.get('temperature')
                 temperature_unit = period.get('temperatureUnit')
                 wind_speed = period.get('windSpeed')
                 wind_direction = period.get('windDirection')
                 short_forecast = period.get('shortForecast')
                 prob_precip = period.get('probabilityOfPrecipitation', {}).get('value')
+
                 forecast_list.append({
-                    "Day": day_of_week,
+                    "Day": display_day,
                     "Date & Time": start_dt.strftime('%B %d, %Y %I:%M %p'),
                     "Short Forecast": short_forecast,
                     "Detailed Forecast": detailedForecast,
@@ -477,6 +564,7 @@ with st.spinner("Retrieving NOAA forecast..."):
                     "Wind Direction": wind_direction,
                     "Precipitation Chance (%)": prob_precip if prob_precip is not None else "N/A"
                 })
+
             forecast_df = pd.DataFrame(forecast_list)
             columns_order = [
                 "Day", "Date & Time", "Short Forecast", "Detailed Forecast",
@@ -502,8 +590,5 @@ with st.spinner("Retrieving NOAA forecast..."):
             st.error(f"Failed to retrieve NOAA forecast. Status {forecast_response.status_code}")
     else:
         st.error(f"Failed to retrieve location data from NOAA. Status {response.status_code}")
-
-
-
 
 
