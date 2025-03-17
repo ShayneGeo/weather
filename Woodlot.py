@@ -539,9 +539,10 @@ with st.spinner("Retrieving NOAA forecast..."):
                 detailedForecast = period["detailedForecast"]
                 start_dt = datetime.datetime.fromisoformat(startTime[:-6])
                 day_of_week = start_dt.strftime("%A")
+                hour = start_dt.hour  # Extract hour from datetime
 
-                # Convert "Monday Night" to "Monday Overnight"
-                if period["name"].endswith("Night"):
+                # If the forecast is between 6:00 PM and 11:59 PM, mark it as "Overnight"
+                if 18 <= hour <= 23:
                     display_day = f"{day_of_week} Overnight"
                 else:
                     display_day = day_of_week
@@ -555,7 +556,7 @@ with st.spinner("Retrieving NOAA forecast..."):
 
                 forecast_list.append({
                     "Day": display_day,
-                    "Date & Time": start_dt.strftime('%B %d, %Y %I:%M %p'),
+                    "Date & Time": start_dt.strftime('%B %d, %Y %I:%M %p"),
                     "Short Forecast": short_forecast,
                     "Detailed Forecast": detailedForecast,
                     "Temperature": f"{temperature} {temperature_unit}" if temperature and temperature_unit else "N/A",
@@ -585,6 +586,7 @@ with st.spinner("Retrieving NOAA forecast..."):
                     st.markdown(f"**Wind Speed:** {row['Wind Speed']}")
                     st.markdown(f"**Wind Direction:** {row['Wind Direction']}")
                     st.markdown(f"**Precipitation Chance (%):** {row['Precipitation Chance (%)']}")
+
         else:
             st.error(f"Failed to retrieve NOAA forecast. Status {forecast_response.status_code}")
     else:
