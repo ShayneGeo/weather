@@ -1035,6 +1035,7 @@ from timezonefinder import TimezoneFinder
 from astral import LocationInfo
 from astral.sun import sun
 import plotly.graph_objects as go
+import cartopy.crs as ccrs
 
 # ---------------------------
 # PAGE CONFIG & TITLE
@@ -1074,16 +1075,16 @@ with st.spinner("Retrieving NOAA forecast..."):
                 else:
                     display_day = day_of_week
 
-                temperature = period.get('temperature')
-                temperature_unit = period.get('temperatureUnit')
-                wind_speed = period.get('windSpeed')
-                wind_direction = period.get('windDirection')
-                short_forecast = period.get('shortForecast')
-                prob_precip = period.get('probabilityOfPrecipitation', {}).get('value')
+                temperature = period.get("temperature")
+                temperature_unit = period.get("temperatureUnit")
+                wind_speed = period.get("windSpeed")
+                wind_direction = period.get("windDirection")
+                short_forecast = period.get("shortForecast")
+                prob_precip = period.get("probabilityOfPrecipitation", {}).get("value")
 
                 forecast_list.append({
                     "Day": display_day,
-                    "Date & Time": start_dt.strftime('%B %d, %Y %I:%M %p'),
+                    "Date & Time": start_dt.strftime("%B %d, %Y %I:%M %p"),
                     "Short Forecast": short_forecast,
                     "Detailed Forecast": detailedForecast,
                     "Temperature": f"{temperature} {temperature_unit}" if temperature and temperature_unit else "N/A",
@@ -1130,23 +1131,16 @@ with st.spinner("Retrieving last 5 HRRR forecast cycles (no analysis)..."):
     cycle_times_utc = [current_cycle_time_utc - datetime.timedelta(hours=6 * i) for i in range(5)]
     cycle_times_utc.reverse()
 
-    level_surface = 'surface'
-    var_gust = 'GUST'
-    var_temp = 'TMP'
-    level_rh = '2m_above_ground'
-    var_rh = 'RH'
+    level_surface = "surface"
+    var_gust = "GUST"
+    var_temp = "TMP"
+    level_rh = "2m_above_ground"
+    var_rh = "RH"
 
     fs = s3fs.S3FileSystem(anon=True)
     chunk_index = xr.open_zarr(s3fs.S3Map("s3://hrrrzarr/grid/HRRR_chunk_index.zarr", s3=fs))
 
-    # Retrieve projection-based chunk row/col
-    x_val = chunk_index.x.sel(x=default_lon, method="nearest").values
-    y_val = chunk_index.y.sel(y=default_lat, method="nearest").values  # Not correct, we must transform
-    # Instead, let's do the correct transform approach (the chunk_index is in Lambert coordinates).
-    # We'll do an approximate approach as we did: we have the chunk_index dataset with x, y in Lambert.
-    # We can just do .sel(x=transform_lon, y=transform_lat, method="nearest").
-    # But to keep it simpler, we follow original approach with direct transform:
-    import cartopy.crs as ccrs
+    # We need to transform to Lambert Conformal coords
     projection = ccrs.LambertConformal(
         central_longitude=262.5,
         central_latitude=38.5,
@@ -1158,7 +1152,7 @@ with st.spinner("Retrieving last 5 HRRR forecast cycles (no analysis)..."):
     fcst_chunk_id = f"0.{nearest_point.chunk_id.values}"
 
     def retrieve_data(s3_url):
-        with fs.open(s3_url, 'rb') as compressed_data:
+        with fs.open(s3_url, "rb") as compressed_data:
             buffer = ncd.blosc.decompress(compressed_data.read())
         dtype = "<f4"
         chunk = np.frombuffer(buffer, dtype=dtype)
@@ -1246,6 +1240,12 @@ with st.spinner("Retrieving last 5 HRRR forecast cycles (no analysis)..."):
         all_forecast_rh.append((init_time_utc, valid_times_local, forecast_values))
 
 def plot_with_nighttime_shading(var_name, unit, all_data, now_local, local_tz, local_tz_name, lat, lon):
+    """
+    Create a Plotly figure with:
+    - Lines for each HRRR init cycle
+    - A dotted vertical line at 'now'
+    - Nighttime shading using add_shape, to avoid date-summing issues
+    """
     fig = go.Figure()
     colors = [
         "#7A0000","#D4A017","#001F3F","#6F4518","#FF4500","#9400D3",
@@ -1255,31 +1255,53 @@ def plot_with_nighttime_shading(var_name, unit, all_data, now_local, local_tz, l
     all_times = []
     min_val = None
     max_val = None
+
     for i, (init_time_utc, vtimes_local, fvalues) in enumerate(all_data):
         if len(fvalues) == 0:
             continue
         color = colors[i % len(colors)]
         init_time_local_str = init_time_utc.astimezone(local_tz).strftime("%m-%d %H:%M %Z")
+
+        # Convert each datetime to string for Plotly to avoid sum() on datetimes
+        # Plotly can handle python datetimes, but older versions can break
+        x_str = [dt.isoformat() for dt in vtimes_local]
+
         fig.add_trace(
             go.Scatter(
-                x=vtimes_local,
+                x=x_str,
                 y=fvalues,
-                mode='lines+markers',
-                name=f'Init {init_time_local_str}',
-                marker=dict(symbol='x'),
+                mode="lines+markers",
+                name=f"Init {init_time_local_str}",
+                marker=dict(symbol="x"),
                 line=dict(color=color)
             )
         )
         local_min = float(np.nanmin(fvalues))
         local_max = float(np.nanmax(fvalues))
-        min_val = local_min if (min_val is None or local_min < min_val) else min_val
-        max_val = local_max if (max_val is None or local_max > max_val) else max_val
+        if min_val is None or local_min < min_val:
+            min_val = local_min
+        if max_val is None or local_max > max_val:
+            max_val = local_max
         all_times.extend(vtimes_local)
 
-    # Vertical line for 'Now'
-    fig.add_vline(x=now_local, line_dash='dot', line_color='black', annotation_text='Now')
+    # We'll add a shape for "Now" (vertical line)
+    now_x = now_local.isoformat()
+    fig.add_shape(
+        type="line",
+        x0=now_x, x1=now_x,
+        yref="paper", y0=0, y1=1,
+        line=dict(color="black", dash="dot")
+    )
+    # Add an annotation for "Now"
+    fig.add_annotation(
+        x=now_x,
+        y=1.02,
+        yref="paper",
+        text="Now",
+        showarrow=False
+    )
 
-    # Nighttime shading
+    # Nighttime shading via shapes
     if all_times:
         earliest_time = min(all_times)
         latest_time = max(all_times)
@@ -1296,33 +1318,50 @@ def plot_with_nighttime_shading(var_name, unit, all_data, now_local, local_tz, l
             s = sun(location.observer, date=current_date, tzinfo=local_tz)
             next_date = current_date + datetime.timedelta(days=1)
             s_next = sun(location.observer, date=next_date, tzinfo=local_tz)
-            today_sunset = s['sunset']
-            tomorrow_sunrise = s_next['sunrise']
+            today_sunset = s["sunset"]
+            tomorrow_sunrise = s_next["sunrise"]
             shade_start = max(today_sunset, earliest_time)
             shade_end = min(tomorrow_sunrise, latest_time)
-            # Only add shape if times are valid
+
             if shade_start < shade_end:
-                fig.add_vrect(
-                    x0=shade_start, x1=shade_end,
-                    fillcolor='lightgray', opacity=0.3,
-                    layer='below', line_width=0,
-                    annotation_text='Nighttime',
-                    annotation_position='top left'
+                # Convert to strings
+                x0_str = shade_start.isoformat()
+                x1_str = shade_end.isoformat()
+                fig.add_shape(
+                    type="rect",
+                    xref="x", x0=x0_str, x1=x1_str,
+                    yref="paper", y0=0, y1=1,
+                    fillcolor="lightgray",
+                    opacity=0.3,
+                    line_width=0
+                )
+                # Add a small label near the top
+                fig.add_annotation(
+                    x=x0_str,
+                    y=1.02,
+                    yref="paper",
+                    text="Nighttime",
+                    showarrow=False
                 )
             current_date = next_date
 
     # Axis labels and range
     fig.update_layout(
-        title=f'HRRR {var_name} ({unit}) Forecasts [Local Time]<br>Lat={lat:.2f}, Lon={lon:.2f} | Last 5 Cycles',
-        xaxis_title='Valid Time (Local)',
-        yaxis_title=f'{var_name} ({unit})',
+        title=(
+            f"HRRR {var_name} ({unit}) Forecasts [Local Time]<br>"
+            f"Lat={lat:.2f}, Lon={lon:.2f} | Last 5 Cycles"
+        ),
+        xaxis_title="Valid Time (Local)",
+        yaxis_title=f"{var_name} ({unit})",
         legend=dict(yanchor="middle", xanchor="left", x=1.02, y=0.5),
+        xaxis=dict(type="date", showgrid=True),
+        yaxis=dict(showgrid=True)
     )
+
     if min_val is not None and max_val is not None:
-        buffer = (max_val - min_val) * 0.1
+        buffer = max(3.0, (max_val - min_val) * 0.1)
         fig.update_yaxes(range=[min_val - buffer, max_val + buffer])
 
-    fig.update_layout(xaxis=dict(showgrid=True), yaxis=dict(showgrid=True))
     return fig
 
 # -----------------------------
@@ -1336,7 +1375,7 @@ for (init_time_utc, vtimes_local, fvalues) in all_forecast_gust:
     gust_data_for_plot.append((init_time_utc, vtimes_local, fvalues_mph))
 
 gust_fig = plot_with_nighttime_shading(
-    var_name='GUST', unit='mph',
+    var_name="GUST", unit="mph",
     all_data=gust_data_for_plot, now_local=now_local,
     local_tz=local_tz, local_tz_name=local_tz_name,
     lat=default_lat, lon=default_lon
@@ -1354,7 +1393,7 @@ for (init_time_utc, vtimes_local, fvalues) in all_forecast_tmp:
     temp_data_for_plot.append((init_time_utc, vtimes_local, temp_values_f))
 
 tmp_fig = plot_with_nighttime_shading(
-    var_name='TMP', unit='°F',
+    var_name="TMP", unit="°F",
     all_data=temp_data_for_plot, now_local=now_local,
     local_tz=local_tz, local_tz_name=local_tz_name,
     lat=default_lat, lon=default_lon
@@ -1370,14 +1409,13 @@ for (init_time_utc, vtimes_local, fvalues) in all_forecast_rh:
     rh_data_for_plot.append((init_time_utc, vtimes_local, fvalues))
 
 rh_fig = plot_with_nighttime_shading(
-    var_name='RH', unit='%', 
+    var_name="RH", unit="%", 
     all_data=rh_data_for_plot, now_local=now_local,
     local_tz=local_tz, local_tz_name=local_tz_name,
     lat=default_lat, lon=default_lon
 )
 st.plotly_chart(rh_fig, use_container_width=True)
 st.success("HRRR Relative Humidity (%) forecasts (Local Time) with pinch-to-zoom enabled!")
-
 
 
 
