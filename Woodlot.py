@@ -1131,6 +1131,7 @@ import pytz
 from PIL import Image
 import base64
 import numpy as np
+import pandas as pd  # <-- Make sure to import pandas so we can use pd.to_datetime
 
 # -----------------------------
 # SETUP
@@ -1157,12 +1158,7 @@ most_recent_run_mt = most_recent_run_utc.astimezone(mountain_tz)
 forecast_hours = range(0, 19)  # 0 through 18
 vmin, vmax = 0, 70
 
-# -----------------------------
-# AUTOMATICALLY GENERATE AND DISPLAY FORECAST GIF
-# -----------------------------
 st.title("HRRR Wind Gust Forecast GIF")
-
-# You can optionally show the run time in the app
 st.write(f"Most recent HRRR run (Mountain Time): {most_recent_run_mt.strftime('%Y-%m-%d %I:%M %p %Z')}")
 
 frames = []
@@ -1170,12 +1166,12 @@ with st.spinner("Generating HRRR Forecast GIF..."):
     # Format strings for s3 path
     date_str = most_recent_run_utc.strftime("%Y%m%d")
     hour_str = most_recent_run_utc.strftime("%H")
-    # e.g., "hrrrzarr/sfc/20250324/20250324_12z_fcst.zarr/surface/GUST"
+    # Example path: "hrrrzarr/sfc/20250324/20250324_12z_fcst.zarr/surface/GUST"
     base_path = f"hrrrzarr/sfc/{date_str}/{date_str}_{hour_str}z_fcst.zarr/surface/GUST"
 
     try:
         ds = xr.open_zarr(lookup(base_path), consolidated=False)
-        # If "GUST" is not found at top-level, try sub-group "surface"
+        # If "GUST" not found at the top-level, try sub-group "surface"
         if 'GUST' not in ds:
             ds = xr.open_zarr(lookup(f"{base_path}/surface"), consolidated=False)
 
@@ -1184,20 +1180,21 @@ with st.spinner("Generating HRRR Forecast GIF..."):
 
         # Loop over forecast hours
         for fh in forecast_hours:
-            if fh >= ds.dims["time"]:
-                # If the dataset doesn't have that many forecast hours, break early
+            if fh >= ds.sizes["time"]:
+                # If the dataset doesn't have that many forecast hours, stop
                 break
 
             # Select this forecast hour
             gust_slice = ds.GUST_mph.isel(time=fh)
 
-            # The valid time for this forecast hour
-            # "time" coordinate is typically ds.time[fh] in UTC
-            valid_time_utc = ds.time[fh].values
-            # Convert from numpy datetime to python datetime
-            valid_time_utc = np.datetime64(valid_time_utc).astype('datetime64[s]').astype(datetime)
-            # Localize to UTC, then convert to Mountain
-            valid_time_utc = utc_tz.localize(valid_time_utc)
+            # Retrieve the "time" coordinate for this forecast hour
+            # We'll convert it carefully using pandas to avoid the "Could not convert object to NumPy datetime" error
+            raw_time = ds.time[fh].values  # This is typically a numpy datetime64 or cftime object
+            valid_time_utc = pd.to_datetime(raw_time)  # Safely convert to a pandas Timestamp
+            # If there's no timezone info, assume UTC
+            if valid_time_utc.tz is None:
+                valid_time_utc = valid_time_utc.tz_localize('UTC')
+
             valid_time_mt = valid_time_utc.astimezone(mountain_tz)
             title_str = valid_time_mt.strftime("%Y-%m-%d %I:%M %p %Z")
 
@@ -1234,11 +1231,10 @@ with st.spinner("Generating HRRR Forecast GIF..."):
             format="GIF",
             append_images=frames[1:],
             save_all=True,
-            duration=500,  # 500 ms per frame (2 FPS)
+            duration=500,  # ms per frame
             loop=0
         )
         gif_buffer.seek(0)
-        # Encode the GIF to base64 so it animates in the app
         gif_base64 = base64.b64encode(gif_buffer.getvalue()).decode("utf-8")
         gif_html = f'<img src="data:image/gif;base64,{gif_base64}" alt="HRRR Wind Gust Forecast GIF" style="width:100%;">'
         st.markdown(gif_html, unsafe_allow_html=True)
