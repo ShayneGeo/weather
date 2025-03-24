@@ -1063,9 +1063,10 @@ if st.button("Generate HRRR Wind Gust GIF"):
                 st.write(f"Processing: {date_str} {time}Z")
                 path = f"hrrrzarr/sfc/{date_str}/{date_str}_{time}z_anl.zarr/surface/GUST"
                 try:
-                    ds = xr.open_zarr(lookup(path), consolidated=False, chunks={})
+                    # Removed chunks parameter to avoid the "unrecognized chunk manager dask" error
+                    ds = xr.open_zarr(lookup(path), consolidated=False)
                     if 'GUST' not in ds:
-                        ds = xr.open_zarr(lookup(f"{path}/surface"), consolidated=False, chunks={})
+                        ds = xr.open_zarr(lookup(f"{path}/surface"), consolidated=False)
                     ds['GUST_mph'] = ds.GUST * 2.23694
                     utc_datetime = datetime.strptime(f"{date_str} {time}", "%Y%m%d %H")
                     utc_datetime = utc_tz.localize(utc_datetime)
@@ -1103,6 +1104,7 @@ if st.button("Generate HRRR Wind Gust GIF"):
             st.success("GIF generated successfully!")
         else:
             st.error("No frames were generated. GIF not created.")
+
 
 
 
