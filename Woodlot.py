@@ -1056,7 +1056,7 @@ most_recent_run_utc = now_utc.replace(hour=most_recent_run_hour, minute=0, secon
 # Set end_date to the most recent HRRR run time in Mountain Time
 end_date = most_recent_run_utc.astimezone(mountain_tz)
 # Process data for the day prior to the most recent run day as well
-start_date = end_date - timedelta(days=1)
+start_date = end_date - timedelta(days=0)
 
 time_steps = ["00", "06", "12", "18"]
 vmin, vmax = 0, 70
