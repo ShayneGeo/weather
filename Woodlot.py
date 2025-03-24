@@ -1417,8 +1417,6 @@
 # # st.plotly_chart(rh_fig, use_container_width=True)
 # # st.success("HRRR Relative Humidity (%) forecasts (Local Time) with pinch-to-zoom enabled!")
 
-
-
 import streamlit as st
 import requests
 import pandas as pd
@@ -1433,6 +1431,10 @@ import pytz
 from timezonefinder import TimezoneFinder
 from astral import LocationInfo
 from astral.sun import sun
+
+import io
+import gc
+from PIL import Image
 
 # ---------------------------
 # PAGE CONFIG & TITLE
@@ -1845,3 +1847,82 @@ with st.spinner("Plotting HRRR Relative Humidity..."):
     fig3.autofmt_xdate(rotation=45)
     st.pyplot(fig3)
     st.success("HRRR Relative Humidity (%) forecasts (Local Time)!")
+
+# -------------------------------------------
+# ADDING THE 3-DAY ANALYSIS GIF (DISPLAY ONLY)
+# -------------------------------------------
+if st.checkbox("Show 3-Day HRRR Analysis GIF for GUST (00, 06, 12, 18Z)"):
+    with st.spinner("Generating the HRRR Analysis GIF (Wind Gust)..."):
+        # Setup S3
+        s3 = s3fs.S3FileSystem(anon=True)
+        def lookup(path):
+            return s3fs.S3Map(path, s3=s3)
+        
+        utc_tz = pytz.utc
+        mountain_tz = pytz.timezone("America/Los_Angeles")  # change if needed
+
+        # 3 most recent complete days
+        current_mt_time = datetime.datetime.now(mountain_tz)
+        end_date = (current_mt_time - datetime.timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+        start_date = (end_date - datetime.timedelta(days=2))
+
+        time_steps = ["00", "06", "12", "18"]
+        vmin, vmax = 0, 70
+        frames = []
+
+        current_date_iter = start_date
+        while current_date_iter <= end_date:
+            date_str = current_date_iter.strftime("%Y%m%d")
+            for t in time_steps:
+                try:
+                    # Path to analysis data
+                    path = f"hrrrzarr/sfc/{date_str}/{date_str}_{t}z_anl.zarr/surface/GUST"
+                    ds = xr.open_zarr(lookup(path), consolidated=False, chunks={})
+                    
+                    # If "GUST" not found, try sub-group "surface"
+                    if 'GUST' not in ds:
+                        ds = xr.open_zarr(lookup(f"{path}/surface"), consolidated=False, chunks={})
+                    
+                    ds['GUST_mph'] = ds.GUST * 2.23694
+                    utc_datetime = utc_tz.localize(datetime.datetime.strptime(f"{date_str} {t}", "%Y%m%d %H"))
+                    mountain_datetime = utc_datetime.astimezone(mountain_tz)
+                    mt_time_str = mountain_datetime.strftime("%Y-%m-%d %I:%M %p %Z")
+
+                    fig, ax = plt.subplots(figsize=(10, 6))
+                    ds.GUST_mph.plot(ax=ax, vmin=vmin, vmax=vmax, cmap="inferno",
+                                     cbar_kwargs={"orientation": "horizontal", "pad": 0.1})
+                    ax.set_title(f"HRRR Wind Gust (MPH) - {date_str} {t}Z ({mt_time_str})", fontsize=12)
+                    ax.set_xlabel("Longitude")
+                    ax.set_ylabel("Latitude")
+                    ax.grid(False)
+
+                    buf = io.BytesIO()
+                    plt.savefig(buf, format="png", dpi=300)
+                    buf.seek(0)
+                    frame = Image.open(buf).convert("RGB")
+                    frames.append(frame)
+
+                    plt.close(fig)
+                    buf.close()
+                    ds.close()
+                    del ds
+                    gc.collect()
+                except Exception as e:
+                    print(f"Skipping {date_str} {t}Z due to error: {e}")
+            current_date_iter += datetime.timedelta(days=1)
+
+        if frames:
+            gif_bytes = io.BytesIO()
+            frames[0].save(
+                gif_bytes,
+                format="GIF",
+                append_images=frames[1:],
+                save_all=True,
+                duration=500,
+                loop=0
+            )
+            gif_bytes.seek(0)
+            st.image(gif_bytes, caption="HRRR 3-Day Analysis GIF (Wind Gust)")
+        else:
+            st.error("No frames were generated for the 3-Day HRRR Analysis GIF.")
+
