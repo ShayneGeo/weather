@@ -1129,7 +1129,8 @@ import io
 from datetime import datetime, timedelta
 import pytz
 from PIL import Image
-import base64
+import imageio
+import numpy as np
 
 # -----------------------------
 # SETUP
@@ -1157,9 +1158,9 @@ time_steps = ["00", "06", "12", "18"]
 vmin, vmax = 0, 70
 
 # -----------------------------
-# BUTTON TO GENERATE AND DISPLAY FRAME SLIDER
+# BUTTON TO GENERATE AND DISPLAY VIDEO
 # -----------------------------
-if st.button("Generate HRRR Wind Gust Frames"):
+if st.button("Generate HRRR Wind Gust Video"):
     frames_list = []  # List to store tuples of (timestamp, image frame)
     with st.spinner("Generating frames..."):
         current_date_iter = start_date
@@ -1176,12 +1177,11 @@ if st.button("Generate HRRR Wind Gust Frames"):
                     utc_datetime = datetime.strptime(f"{date_str} {time}", "%Y%m%d %H")
                     utc_datetime = utc_tz.localize(utc_datetime)
                     mountain_datetime = utc_datetime.astimezone(mountain_tz)
-                    mt_time_str = mountain_datetime.strftime("%Y-%m-%d %I:%M %p %Z")
                     
                     fig, ax = plt.subplots(figsize=(10, 6))
                     ds.GUST_mph.plot(ax=ax, vmin=vmin, vmax=vmax, cmap="inferno",
                                      cbar_kwargs={"orientation": "horizontal", "pad": 0.1})
-                    ax.set_title(f"HRRR Wind Gust (MPH) - {mt_time_str}", fontsize=12)
+                    ax.set_title(f"HRRR Wind Gust (MPH) - {mountain_datetime.strftime('%Y-%m-%d %I:%M %p %Z')}", fontsize=12)
                     ax.set_xlabel("Longitude")
                     ax.set_ylabel("Latitude")
                     ax.grid(False)
@@ -1190,7 +1190,6 @@ if st.button("Generate HRRR Wind Gust Frames"):
                     plt.savefig(buf, format="png", dpi=300)
                     buf.seek(0)
                     frame = Image.open(buf).convert("RGB")
-                    
                     frames_list.append((mountain_datetime, frame))
                     
                     plt.close(fig)
@@ -1203,20 +1202,12 @@ if st.button("Generate HRRR Wind Gust Frames"):
             current_date_iter += timedelta(days=1)
     
     if frames_list:
-        # Sort frames by timestamp
         frames_list.sort(key=lambda x: x[0])
-        # Build a list of formatted time strings for the slider options
-        time_options = [dt.strftime("%Y-%m-%d %I:%M %p %Z") for dt, _ in frames_list]
-        selected_time_str = st.select_slider("Select Forecast Time", options=time_options, value=time_options[-1])
-        # Retrieve the corresponding frame
-        selected_frame = None
-        for dt, frame in frames_list:
-            if dt.strftime("%Y-%m-%d %I:%M %p %Z") == selected_time_str:
-                selected_frame = frame
-                break
-        if selected_frame:
-            st.image(selected_frame, caption=f"Forecast at {selected_time_str}", use_column_width=True)
-        st.success("Frames generated successfully!")
+        frames = [np.array(frame) for _, frame in frames_list]
+        # Create an mp4 video from the frames; mimwrite returns bytes when uri is None.
+        video_bytes = imageio.mimwrite(uri=None, ims=frames, fps=2, format='mp4')
+        st.video(video_bytes)
+        st.success("Video generated successfully!")
     else:
-        st.error("No frames were generated.")
+        st.error("No frames were generated. Video not created.")
 
