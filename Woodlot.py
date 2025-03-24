@@ -1032,6 +1032,7 @@ import io
 from datetime import datetime, timedelta
 import pytz
 from PIL import Image
+import base64
 
 # -----------------------------
 # SETUP
@@ -1063,7 +1064,6 @@ if st.button("Generate HRRR Wind Gust GIF"):
                 st.write(f"Processing: {date_str} {time}Z")
                 path = f"hrrrzarr/sfc/{date_str}/{date_str}_{time}z_anl.zarr/surface/GUST"
                 try:
-                    # Removed chunks parameter to avoid the "unrecognized chunk manager dask" error
                     ds = xr.open_zarr(lookup(path), consolidated=False)
                     if 'GUST' not in ds:
                         ds = xr.open_zarr(lookup(f"{path}/surface"), consolidated=False)
@@ -1100,7 +1100,10 @@ if st.button("Generate HRRR Wind Gust GIF"):
             frames[0].save(gif_buffer, format="GIF", append_images=frames[1:], save_all=True,
                            duration=500, loop=0)
             gif_buffer.seek(0)
-            st.image(gif_buffer, caption="HRRR Wind Gust GIF", use_column_width=True)
+            # Encode the GIF to base64 so it animates in the app
+            gif_base64 = base64.b64encode(gif_buffer.getvalue()).decode("utf-8")
+            gif_html = f'<img src="data:image/gif;base64,{gif_base64}" alt="HRRR Wind Gust GIF" style="width:100%;">'
+            st.markdown(gif_html, unsafe_allow_html=True)
             st.success("GIF generated successfully!")
         else:
             st.error("No frames were generated. GIF not created.")
