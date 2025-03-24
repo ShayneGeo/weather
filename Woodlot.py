@@ -1,598 +1,4 @@
 
-# # import streamlit as st
-# # import requests
-# # import pandas as pd
-# # import s3fs
-# # import numcodecs as ncd
-# # import numpy as np
-# # import datetime
-# # import xarray as xr
-# # import cartopy.crs as ccrs
-# # import matplotlib.pyplot as plt
-# # import pytz
-# # from timezonefinder import TimezoneFinder
-# # from astral import LocationInfo
-# # from astral.sun import sun
-
-# # # ---------------------------
-# # # PAGE CONFIG & TITLE
-# # # ---------------------------
-# # st.set_page_config(layout="centered")
-# # st.title("NOAA Weather + HRRR Forecast (Local Time)")
-
-# # # ----------------------------------
-# # # Default Coordinates (automatically used)
-# # # ----------------------------------
-# # default_lat = 40.65
-# # default_lon = -105.307
-
-# # # --------------------------
-# # # 1. NOAA Forecast Retrieval
-# # # --------------------------
-# # with st.spinner("Retrieving NOAA forecast..."):
-# #     base_url = f"https://api.weather.gov/points/{default_lat},{default_lon}"
-# #     response = requests.get(base_url)
-# #     if response.status_code == 200:
-# #         noaa_data = response.json()
-# #         forecast_url = noaa_data["properties"]["forecast"]
-# #         forecast_response = requests.get(forecast_url)
-# #         if forecast_response.status_code == 200:
-# #             forecast_data = forecast_response.json()
-# #             forecast_list = []
-# #             for period in forecast_data["properties"]["periods"]:
-# #                 startTime = period["startTime"]
-# #                 detailedForecast = period["detailedForecast"]
-# #                 start_dt = datetime.datetime.fromisoformat(startTime[:-6])
-# #                 day_of_week = start_dt.strftime("%A")
-# #                 temperature = period.get('temperature')
-# #                 temperature_unit = period.get('temperatureUnit')
-# #                 wind_speed = period.get('windSpeed')
-# #                 wind_direction = period.get('windDirection')
-# #                 short_forecast = period.get('shortForecast')
-# #                 prob_precip = period.get('probabilityOfPrecipitation', {}).get('value')
-# #                 forecast_list.append({
-# #                     "Day": day_of_week,
-# #                     "Date & Time": start_dt.strftime('%B %d, %Y %I:%M %p'),
-# #                     "Short Forecast": short_forecast,
-# #                     "Detailed Forecast": detailedForecast,
-# #                     "Temperature": f"{temperature} {temperature_unit}" if temperature and temperature_unit else "N/A",
-# #                     "Wind Speed": wind_speed,
-# #                     "Wind Direction": wind_direction,
-# #                     "Precipitation Chance (%)": prob_precip if prob_precip is not None else "N/A"
-# #                 })
-# #             forecast_df = pd.DataFrame(forecast_list)
-# #             columns_order = [
-# #                 "Day", "Date & Time", "Short Forecast", "Detailed Forecast",
-# #                 "Temperature", "Wind Speed", "Wind Direction", "Precipitation Chance (%)"
-# #             ]
-# #             forecast_df = forecast_df[columns_order]
-# #             st.success("NOAA forecast retrieved successfully!")
-# #             for idx, row in forecast_df.iterrows():
-# #                 title = f"{row['Day']} - {row['Date & Time']}"
-# #                 with st.expander(title):
-# #                     st.markdown(f"**Short Forecast:** {row['Short Forecast']}")
-# #                     st.markdown(f"**Detailed Forecast:** {row['Detailed Forecast']}")
-# #                     st.markdown(f"**Temperature:** {row['Temperature']}")
-# #                     st.markdown(f"**Wind Speed:** {row['Wind Speed']}")
-# #                     st.markdown(f"**Wind Direction:** {row['Wind Direction']}")
-# #                     st.markdown(f"**Precipitation Chance (%):** {row['Precipitation Chance (%)']}")
-# #         else:
-# #             st.error(f"Failed to retrieve NOAA forecast. Status {forecast_response.status_code}")
-# #     else:
-# #         st.error(f"Failed to retrieve location data from NOAA. Status {response.status_code}")
-
-# # # --------------------------------------------------
-# # # 2. HRRR Forecast Retrieval (Last 5 Cycles)
-# # # --------------------------------------------------
-# # with st.spinner("Retrieving last 5 HRRR forecast cycles (no analysis)..."):
-# #     tz_finder = TimezoneFinder()
-# #     local_tz_name = tz_finder.timezone_at(lng=default_lon, lat=default_lat)
-# #     if local_tz_name is None:
-# #         local_tz_name = "UTC"
-# #     local_tz = pytz.timezone(local_tz_name)
-# #     now_rounded_utc = datetime.datetime.utcnow().replace(minute=0, second=0, microsecond=0, tzinfo=pytz.utc)
-# #     now_local = now_rounded_utc.astimezone(local_tz)
-# #     hour_block = (now_rounded_utc.hour // 6) * 6
-# #     current_cycle_time_utc = now_rounded_utc.replace(hour=hour_block)
-# #     cycle_times_utc = [current_cycle_time_utc - datetime.timedelta(hours=6 * i) for i in range(5)]
-# #     cycle_times_utc.reverse()
-
-# #     level_surface = 'surface'
-# #     var_gust = 'GUST'
-# #     var_temp = 'TMP'
-# #     level_rh = '2m_above_ground'
-# #     var_rh = 'RH'
-
-# #     fs = s3fs.S3FileSystem(anon=True)
-# #     chunk_index = xr.open_zarr(s3fs.S3Map("s3://hrrrzarr/grid/HRRR_chunk_index.zarr", s3=fs))
-# #     projection = ccrs.LambertConformal(
-# #         central_longitude=262.5,
-# #         central_latitude=38.5,
-# #         standard_parallels=(38.5, 38.5),
-# #         globe=ccrs.Globe(semimajor_axis=6371229, semiminor_axis=6371229)
-# #     )
-# #     x, y = projection.transform_point(default_lon, default_lat, ccrs.PlateCarree())
-# #     nearest_point = chunk_index.sel(x=x, y=y, method="nearest")
-# #     fcst_chunk_id = f"0.{nearest_point.chunk_id.values}"
-
-# #     def retrieve_data(s3_url):
-# #         with fs.open(s3_url, 'rb') as compressed_data:
-# #             buffer = ncd.blosc.decompress(compressed_data.read())
-# #         dtype = "<f4"
-# #         chunk = np.frombuffer(buffer, dtype=dtype)
-# #         entry_size = 150 * 150
-# #         num_entries = len(chunk) // entry_size
-# #         if num_entries == 1:
-# #             data_array = np.reshape(chunk, (150, 150))
-# #         else:
-# #             data_array = np.reshape(chunk, (num_entries, 150, 150))
-# #         return data_array
-
-# #     # -----------------------------
-# #     # Retrieve GUST
-# #     # -----------------------------
-# #     all_forecast_gust = []
-# #     for init_time_utc in cycle_times_utc:
-# #         run_date_str = init_time_utc.strftime("%Y%m%d")
-# #         run_hr_str = init_time_utc.strftime("%H")
-# #         fcst_url = (
-# #             f"hrrrzarr/sfc/{run_date_str}/"
-# #             f"{run_date_str}_{run_hr_str}z_fcst.zarr/{level_surface}/{var_gust}/{level_surface}/{var_gust}/"
-# #         )
-# #         try:
-# #             forecast_data = retrieve_data(fcst_url + fcst_chunk_id)
-# #         except Exception as e:
-# #             print(f"Error retrieving GUST for {init_time_utc} -> {e}")
-# #             continue
-# #         num_fcst_hours = forecast_data.shape[0]
-# #         valid_times_utc = [
-# #             (init_time_utc + datetime.timedelta(hours=i)).replace(tzinfo=pytz.utc)
-# #             for i in range(num_fcst_hours)
-# #         ]
-# #         valid_times_local = [vt.astimezone(local_tz) for vt in valid_times_utc]
-# #         forecast_values = forecast_data[:, nearest_point.in_chunk_y, nearest_point.in_chunk_x]
-# #         all_forecast_gust.append((init_time_utc, valid_times_local, forecast_values))
-
-# #     # -----------------------------
-# #     # Retrieve TMP
-# #     # -----------------------------
-# #     all_forecast_tmp = []
-# #     for init_time_utc in cycle_times_utc:
-# #         run_date_str = init_time_utc.strftime("%Y%m%d")
-# #         run_hr_str = init_time_utc.strftime("%H")
-# #         fcst_url = (
-# #             f"hrrrzarr/sfc/{run_date_str}/"
-# #             f"{run_date_str}_{run_hr_str}z_fcst.zarr/{level_surface}/{var_temp}/{level_surface}/{var_temp}/"
-# #         )
-# #         try:
-# #             forecast_data = retrieve_data(fcst_url + fcst_chunk_id)
-# #         except Exception as e:
-# #             print(f"Error retrieving TMP for {init_time_utc} -> {e}")
-# #             continue
-# #         num_fcst_hours = forecast_data.shape[0]
-# #         valid_times_utc = [
-# #             (init_time_utc + datetime.timedelta(hours=i)).replace(tzinfo=pytz.utc)
-# #             for i in range(num_fcst_hours)
-# #         ]
-# #         valid_times_local = [vt.astimezone(local_tz) for vt in valid_times_utc]
-# #         forecast_values = forecast_data[:, nearest_point.in_chunk_y, nearest_point.in_chunk_x]
-# #         all_forecast_tmp.append((init_time_utc, valid_times_local, forecast_values))
-
-# #     # -----------------------------
-# #     # Retrieve RH
-# #     # -----------------------------
-# #     all_forecast_rh = []
-# #     for init_time_utc in cycle_times_utc:
-# #         run_date_str = init_time_utc.strftime("%Y%m%d")
-# #         run_hr_str = init_time_utc.strftime("%H")
-# #         fcst_url = (
-# #             f"hrrrzarr/sfc/{run_date_str}/"
-# #             f"{run_date_str}_{run_hr_str}z_fcst.zarr/{level_rh}/{var_rh}/{level_rh}/{var_rh}/"
-# #         )
-# #         try:
-# #             forecast_data = retrieve_data(fcst_url + fcst_chunk_id)
-# #         except Exception as e:
-# #             print(f"Error retrieving RH for {init_time_utc} -> {e}")
-# #             continue
-# #         num_fcst_hours = forecast_data.shape[0]
-# #         valid_times_utc = [
-# #             (init_time_utc + datetime.timedelta(hours=i)).replace(tzinfo=pytz.utc)
-# #             for i in range(num_fcst_hours)
-# #         ]
-# #         valid_times_local = [vt.astimezone(local_tz) for vt in valid_times_utc]
-# #         forecast_values = forecast_data[:, nearest_point.in_chunk_y, nearest_point.in_chunk_x]
-# #         all_forecast_rh.append((init_time_utc, valid_times_local, forecast_values))
-
-# # # -----------------------------
-# # # FIRST PLOT: GUST
-# # # -----------------------------
-# # fig, ax = plt.subplots(figsize=(10, 5))
-# # ax.set_title(
-# #     f'HRRR {var_gust} (mph) Forecasts [Local Time]\nLat={default_lat:.2f}, Lon={default_lon:.2f} | Last 5 Cycles'
-# # )
-# # ax.set_xlabel('Valid Time (Local)')
-# # ax.set_ylabel(f'{var_gust} (mph)')
-# # colors = [
-# #     "#7A0000","#D4A017","#001F3F","#6F4518","#FF4500","#9400D3",
-# #     "#708090","#2E8B57","#8B0000","#FFD700","#556B2F","#DC143C",
-# #     "#4682B4","#F4A460","#A9A9A9","#5F9EA0","#FF6347"
-# # ]
-# # conv_factor_mps_to_mph = 2.23694
-# # max_fcst_val_gust = 0
-# # all_times = []
-# # for i, (init_time_utc, vtimes_local, fvalues) in enumerate(all_forecast_gust):
-# #     fvalues_mph = fvalues * conv_factor_mps_to_mph
-# #     if len(fvalues_mph) > 0:
-# #         max_fcst_val_gust = max(max_fcst_val_gust, np.nanmax(fvalues_mph))
-# #     color = colors[i % len(colors)]
-# #     init_time_local_str = init_time_utc.astimezone(local_tz).strftime("%m-%d %H:%M %Z")
-# #     ax.plot(
-# #         vtimes_local, fvalues_mph,
-# #         color=color, marker='x', linestyle='-',
-# #         label=f'Init {init_time_local_str}'
-# #     )
-# #     all_times.extend(vtimes_local)
-# # ax.axvline(x=now_local, color='black', linestyle=':', label='Now')
-# # if all_times:
-# #     earliest_time = min(all_times)
-# #     latest_time = max(all_times)
-# #     location = LocationInfo(
-# #         name="HRRR Location",
-# #         region="",
-# #         timezone=local_tz_name,
-# #         latitude=default_lat,
-# #         longitude=default_lon
-# #     )
-# #     current_date = earliest_time.date()
-# #     last_date = latest_time.date()
-# #     label_used = False
-# #     while current_date <= last_date:
-# #         s = sun(location.observer, date=current_date, tzinfo=local_tz)
-# #         next_date = current_date + datetime.timedelta(days=1)
-# #         s_next = sun(location.observer, date=next_date, tzinfo=local_tz)
-# #         today_sunset = s['sunset']
-# #         tomorrow_sunrise = s_next['sunrise']
-# #         shade_start = max(today_sunset, earliest_time)
-# #         shade_end = min(tomorrow_sunrise, latest_time)
-# #         if shade_start < shade_end:
-# #             ax.axvspan(
-# #                 shade_start, shade_end,
-# #                 facecolor='lightgray', alpha=0.3,
-# #                 label='Nighttime' if not label_used else ""
-# #             )
-# #             label_used = True
-# #         current_date = next_date
-# # ax.set_ylim(0, max_fcst_val_gust + 5 if max_fcst_val_gust else 10)
-# # ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
-# # ax.grid(True)
-# # fig.autofmt_xdate(rotation=45)
-# # st.pyplot(fig)
-# # st.success("HRRR GUST forecasts (Local Time)!")
-
-# # # -----------------------------
-# # # SECOND PLOT: TMP (Fahrenheit)
-# # # -----------------------------
-# # with st.spinner("Plotting HRRR temperature..."):
-# #     fig2, ax2 = plt.subplots(figsize=(10, 5))
-# #     ax2.set_title(
-# #         f'HRRR {var_temp} (°F) Forecasts [Local Time]\nLat={default_lat:.2f}, Lon={default_lon:.2f} | Last 5 Cycles'
-# #     )
-# #     ax2.set_xlabel('Valid Time (Local)')
-# #     ax2.set_ylabel(f'{var_temp} (°F)')
-# #     colors_tmp = [
-# #         "#7A0000","#D4A017","#001F3F","#6F4518","#FF4500","#9400D3",
-# #         "#708090","#2E8B57","#8B0000","#FFD700","#556B2F","#DC143C",
-# #         "#4682B4","#F4A460","#A9A9A9","#5F9EA0","#FF6347"
-# #     ]
-# #     max_fcst_val_tmp = None
-# #     min_fcst_val_tmp = None
-# #     all_times_tmp = []
-# #     for i, (init_time_utc, vtimes_local, fvalues) in enumerate(all_forecast_tmp):
-# #         temp_values_f = (fvalues - 273.15) * 9/5 + 32
-# #         if len(temp_values_f) > 0:
-# #             local_min = np.nanmin(temp_values_f)
-# #             local_max = np.nanmax(temp_values_f)
-# #             if min_fcst_val_tmp is None or local_min < min_fcst_val_tmp:
-# #                 min_fcst_val_tmp = local_min
-# #             if max_fcst_val_tmp is None or local_max > max_fcst_val_tmp:
-# #                 max_fcst_val_tmp = local_max
-# #         color = colors_tmp[i % len(colors_tmp)]
-# #         init_time_local_str = init_time_utc.astimezone(local_tz).strftime("%m-%d %H:%M %Z")
-# #         ax2.plot(
-# #             vtimes_local, temp_values_f,
-# #             color=color, marker='x', linestyle='-',
-# #             label=f'Init {init_time_local_str}'
-# #         )
-# #         all_times_tmp.extend(vtimes_local)
-# #     ax2.axvline(x=now_local, color='black', linestyle=':', label='Now')
-# #     if all_times_tmp:
-# #         earliest_time = min(all_times_tmp)
-# #         latest_time = max(all_times_tmp)
-# #         location = LocationInfo(
-# #             name="HRRR Location",
-# #             region="",
-# #             timezone=local_tz_name,
-# #             latitude=default_lat,
-# #             longitude=default_lon
-# #         )
-# #         current_date = earliest_time.date()
-# #         last_date = latest_time.date()
-# #         label_used = False
-# #         while current_date <= last_date:
-# #             s = sun(location.observer, date=current_date, tzinfo=local_tz)
-# #             next_date = current_date + datetime.timedelta(days=1)
-# #             s_next = sun(location.observer, date=next_date, tzinfo=local_tz)
-# #             today_sunset = s['sunset']
-# #             tomorrow_sunrise = s_next['sunrise']
-# #             shade_start = max(today_sunset, earliest_time)
-# #             shade_end = min(tomorrow_sunrise, latest_time)
-# #             if shade_start < shade_end:
-# #                 ax2.axvspan(
-# #                     shade_start, shade_end,
-# #                     facecolor='lightgray', alpha=0.3,
-# #                     label='Nighttime' if not label_used else ""
-# #                 )
-# #                 label_used = True
-# #             current_date = next_date
-# #     if max_fcst_val_tmp is not None:
-# #         ax2.set_ylim(min_fcst_val_tmp - 10, max_fcst_val_tmp + 10)
-# #     else:
-# #         ax2.set_ylim(0, 100)
-# #     ax2.legend(loc='center left', bbox_to_anchor=(1, 0.5))
-# #     ax2.grid(True)
-# #     fig2.autofmt_xdate(rotation=45)
-# #     st.pyplot(fig2)
-# #     st.success("HRRR Temperature (F) forecasts (Local Time)!")
-
-# # # -----------------------------
-# # # THIRD PLOT: RH (%)
-# # # -----------------------------
-# # with st.spinner("Plotting HRRR Relative Humidity..."):
-# #     fig3, ax3 = plt.subplots(figsize=(10, 5))
-# #     ax3.set_title(
-# #         f'HRRR {var_rh} (%) Forecasts [Local Time]\nLat={default_lat:.2f}, Lon={default_lon:.2f} | Last 5 Cycles'
-# #     )
-# #     ax3.set_xlabel('Valid Time (Local)')
-# #     ax3.set_ylabel(f'{var_rh} (%)')
-# #     colors_rh = [
-# #         "#7A0000","#D4A017","#001F3F","#6F4518","#FF4500","#9400D3",
-# #         "#708090","#2E8B57","#8B0000","#FFD700","#556B2F","#DC143C",
-# #         "#4682B4","#F4A460","#A9A9A9","#5F9EA0","#FF6347"
-# #     ]
-# #     max_fcst_val_rh = None
-# #     all_times_rh = []
-# #     for i, (init_time_utc, vtimes_local, fvalues) in enumerate(all_forecast_rh):
-# #         rh_values = fvalues
-# #         if len(rh_values) > 0:
-# #             local_max = np.nanmax(rh_values)
-# #             if max_fcst_val_rh is None or local_max > max_fcst_val_rh:
-# #                 max_fcst_val_rh = local_max
-# #         color = colors_rh[i % len(colors_rh)]
-# #         init_time_local_str = init_time_utc.astimezone(local_tz).strftime("%m-%d %H:%M %Z")
-# #         ax3.plot(
-# #             vtimes_local, rh_values,
-# #             color=color, marker='x', linestyle='-',
-# #             label=f'Init {init_time_local_str}'
-# #         )
-# #         all_times_rh.extend(vtimes_local)
-# #     ax3.axvline(x=now_local, color='black', linestyle=':', label='Now')
-# #     if all_times_rh:
-# #         earliest_time = min(all_times_rh)
-# #         latest_time = max(all_times_rh)
-# #         location = LocationInfo(
-# #             name="HRRR Location",
-# #             region="",
-# #             timezone=local_tz_name,
-# #             latitude=default_lat,
-# #             longitude=default_lon
-# #         )
-# #         current_date = earliest_time.date()
-# #         last_date = latest_time.date()
-# #         label_used = False
-# #         while current_date <= last_date:
-# #             s = sun(location.observer, date=current_date, tzinfo=local_tz)
-# #             next_date = current_date + datetime.timedelta(days=1)
-# #             s_next = sun(location.observer, date=next_date, tzinfo=local_tz)
-# #             today_sunset = s['sunset']
-# #             tomorrow_sunrise = s_next['sunrise']
-# #             shade_start = max(today_sunset, earliest_time)
-# #             shade_end = min(tomorrow_sunrise, latest_time)
-# #             if shade_start < shade_end:
-# #                 ax3.axvspan(
-# #                     shade_start, shade_end,
-# #                     facecolor='lightgray', alpha=0.3,
-# #                     label='Nighttime' if not label_used else ""
-# #                 )
-# #                 label_used = True
-# #             current_date = next_date
-# #     if max_fcst_val_rh is not None:
-# #         ax3.set_ylim(0, min(max_fcst_val_rh + 10, 100))
-# #     else:
-# #         ax3.set_ylim(0, 100)
-# #     ax3.legend(loc='center left', bbox_to_anchor=(1, 0.5))
-# #     ax3.grid(True)
-# #     fig3.autofmt_xdate(rotation=45)
-# #     st.pyplot(fig3)
-# #     st.success("HRRR Relative Humidity (%) forecasts (Local Time)!")
-
-
-# # import streamlit as st
-# # import requests
-# # import pandas as pd
-# # import s3fs
-# # import numcodecs as ncd
-# # import numpy as np
-# # import datetime
-# # import xarray as xr
-# # import cartopy.crs as ccrs
-# # import matplotlib.pyplot as plt
-# # import pytz
-# # from timezonefinder import TimezoneFinder
-# # from astral import LocationInfo
-# # from astral.sun import sun
-
-# # # ---------------------------
-# # # PAGE CONFIG & TITLE
-# # # ---------------------------
-# # st.set_page_config(layout="centered")
-# # st.title("NOAA Weather + HRRR Forecast (Local Time)")
-
-# # # ----------------------------------
-# # # Default Coordinates (automatically used)
-# # # ----------------------------------
-# # default_lat = 40.65
-# # default_lon = -105.307
-
-# # # --------------------------
-# # # 1. NOAA Forecast Retrieval
-# # # --------------------------
-# # with st.spinner("Retrieving NOAA forecast..."):
-# #     base_url = f"https://api.weather.gov/points/{default_lat},{default_lon}"
-# #     response = requests.get(base_url)
-# #     if response.status_code == 200:
-# #         noaa_data = response.json()
-# #         forecast_url = noaa_data["properties"]["forecast"]
-# #         forecast_response = requests.get(forecast_url)
-# #         if forecast_response.status_code == 200:
-# #             forecast_data = forecast_response.json()
-# #             forecast_list = []
-# #             for period in forecast_data["properties"]["periods"]:
-# #                 startTime = period["startTime"]
-# #                 detailedForecast = period["detailedForecast"]
-# #                 start_dt = datetime.datetime.fromisoformat(startTime[:-6])
-# #                 day_of_week = start_dt.strftime("%A")
-# #                 temperature = period.get('temperature')
-# #                 temperature_unit = period.get('temperatureUnit')
-# #                 wind_speed = period.get('windSpeed')
-# #                 wind_direction = period.get('windDirection')
-# #                 short_forecast = period.get('shortForecast')
-# #                 prob_precip = period.get('probabilityOfPrecipitation', {}).get('value')
-# #                 forecast_list.append({
-# #                     "Day": day_of_week,
-# #                     "Date & Time": start_dt.strftime('%B %d, %Y %I:%M %p'),
-# #                     "Short Forecast": short_forecast,
-# #                     "Detailed Forecast": detailedForecast,
-# #                     "Temperature": f"{temperature} {temperature_unit}" if temperature and temperature_unit else "N/A",
-# #                     "Wind Speed": wind_speed,
-# #                     "Wind Direction": wind_direction,
-# #                     "Precipitation Chance (%)": prob_precip if prob_precip is not None else "N/A"
-# #                 })
-# #             forecast_df = pd.DataFrame(forecast_list)
-# #             columns_order = [
-# #                 "Day", "Date & Time", "Short Forecast", "Detailed Forecast",
-# #                 "Temperature", "Wind Speed", "Wind Direction", "Precipitation Chance (%)"
-# #             ]
-# #             forecast_df = forecast_df[columns_order]
-# #             st.success("NOAA forecast retrieved successfully!")
-
-# #             # Display forecast
-# #             for idx, row in forecast_df.iterrows():
-# #                 # Display Date & Time with Short Forecast directly below it
-# #                 st.markdown(f"### {row['Day']} - {row['Date & Time']}")
-# #                 st.markdown(f"**Short Forecast:** {row['Short Forecast']}")
-
-# #                 # Expander for more details
-# #                 with st.expander("More Details"):
-# #                     st.markdown(f"**Detailed Forecast:** {row['Detailed Forecast']}")
-# #                     st.markdown(f"**Temperature:** {row['Temperature']}")
-# #                     st.markdown(f"**Wind Speed:** {row['Wind Speed']}")
-# #                     st.markdown(f"**Wind Direction:** {row['Wind Direction']}")
-# #                     st.markdown(f"**Precipitation Chance (%):** {row['Precipitation Chance (%)']}")
-# #         else:
-# #             st.error(f"Failed to retrieve NOAA forecast. Status {forecast_response.status_code}")
-# #     else:
-# #         st.error(f"Failed to retrieve location data from NOAA. Status {response.status_code}")
-
-
-# # import streamlit as st
-# # import requests
-# # import pandas as pd
-# # import datetime
-
-# # # ---------------------------
-# # # PAGE CONFIG & TITLE
-# # # ---------------------------
-# # st.set_page_config(layout="centered")
-# # st.title("NOAA Weather + HRRR Forecast (Local Time)")
-
-# # # ----------------------------------
-# # # Default Coordinates (automatically used)
-# # # ----------------------------------
-# # default_lat = 40.65
-# # default_lon = -105.307
-
-# # # --------------------------
-# # # 1. NOAA Forecast Retrieval
-# # # --------------------------
-# # with st.spinner("Retrieving NOAA forecast..."):
-# #     base_url = f"https://api.weather.gov/points/{default_lat},{default_lon}"
-# #     response = requests.get(base_url)
-# #     if response.status_code == 200:
-# #         noaa_data = response.json()
-# #         forecast_url = noaa_data["properties"]["forecast"]
-# #         forecast_response = requests.get(forecast_url)
-# #         if forecast_response.status_code == 200:
-# #             forecast_data = forecast_response.json()
-# #             forecast_list = []
-# #             for period in forecast_data["properties"]["periods"]:
-# #                 startTime = period["startTime"]
-# #                 detailedForecast = period["detailedForecast"]
-# #                 start_dt = datetime.datetime.fromisoformat(startTime[:-6])
-# #                 day_of_week = start_dt.strftime("%A")
-# #                 hour = start_dt.hour  # Extract hour from datetime
-
-# #                 # If the forecast is between 6:00 PM and 11:59 PM, mark it as "Overnight"
-# #                 if 18 <= hour <= 23:
-# #                     display_day = f"{day_of_week} Overnight"
-# #                 else:
-# #                     display_day = day_of_week
-
-# #                 temperature = period.get('temperature')
-# #                 temperature_unit = period.get('temperatureUnit')
-# #                 wind_speed = period.get('windSpeed')
-# #                 wind_direction = period.get('windDirection')
-# #                 short_forecast = period.get('shortForecast')
-# #                 prob_precip = period.get('probabilityOfPrecipitation', {}).get('value')
-
-# #                 forecast_list.append({
-# #                     "Day": display_day,
-# #                     "Date & Time": start_dt.strftime('%B %d, %Y %I:%M %p'),
-# #                     "Short Forecast": short_forecast,
-# #                     "Detailed Forecast": detailedForecast,
-# #                     "Temperature": f"{temperature} {temperature_unit}" if temperature and temperature_unit else "N/A",
-# #                     "Wind Speed": wind_speed,
-# #                     "Wind Direction": wind_direction,
-# #                     "Precipitation Chance (%)": prob_precip if prob_precip is not None else "N/A"
-# #                 })
-
-# #             forecast_df = pd.DataFrame(forecast_list)
-# #             columns_order = [
-# #                 "Day", "Date & Time", "Short Forecast", "Detailed Forecast",
-# #                 "Temperature", "Wind Speed", "Wind Direction", "Precipitation Chance (%)"
-# #             ]
-# #             forecast_df = forecast_df[columns_order]
-# #             st.success("NOAA forecast retrieved successfully!")
-
-# #             # Display forecast
-# #             for idx, row in forecast_df.iterrows():
-# #                 # Display Date & Time with Short Forecast directly below it
-# #                 st.markdown(f"### {row['Day']} - {row['Date & Time']}")
-# #                 st.markdown(f"**Short Forecast:** {row['Short Forecast']}")
-
-# #                 # Expander for more details
-# #                 with st.expander("More Details"):
-# #                     st.markdown(f"**Detailed Forecast:** {row['Detailed Forecast']}")
-# #                     st.markdown(f"**Temperature:** {row['Temperature']}")
-# #                     st.markdown(f"**Wind Speed:** {row['Wind Speed']}")
-# #                     st.markdown(f"**Wind Direction:** {row['Wind Direction']}")
-# #                     st.markdown(f"**Precipitation Chance (%):** {row['Precipitation Chance (%)']}")
-
-# #         else:
-# #             st.error(f"Failed to retrieve NOAA forecast. Status {forecast_response.status_code}")
-# #     else:
-# #         st.error(f"Failed to retrieve location data from NOAA. Status {response.status_code}")
-
-
 # import streamlit as st
 # import requests
 # import pandas as pd
@@ -638,23 +44,14 @@
 #                 detailedForecast = period["detailedForecast"]
 #                 start_dt = datetime.datetime.fromisoformat(startTime[:-6])
 #                 day_of_week = start_dt.strftime("%A")
-#                 hour = start_dt.hour
-
-#                 # If forecast time is between 6:00 PM and 11:59 PM, mark as "Overnight"
-#                 if 18 <= hour <= 23:
-#                     display_day = f"{day_of_week} Overnight"
-#                 else:
-#                     display_day = day_of_week
-
 #                 temperature = period.get('temperature')
 #                 temperature_unit = period.get('temperatureUnit')
 #                 wind_speed = period.get('windSpeed')
 #                 wind_direction = period.get('windDirection')
 #                 short_forecast = period.get('shortForecast')
 #                 prob_precip = period.get('probabilityOfPrecipitation', {}).get('value')
-
 #                 forecast_list.append({
-#                     "Day": display_day,
+#                     "Day": day_of_week,
 #                     "Date & Time": start_dt.strftime('%B %d, %Y %I:%M %p'),
 #                     "Short Forecast": short_forecast,
 #                     "Detailed Forecast": detailedForecast,
@@ -663,7 +60,6 @@
 #                     "Wind Direction": wind_direction,
 #                     "Precipitation Chance (%)": prob_precip if prob_precip is not None else "N/A"
 #                 })
-
 #             forecast_df = pd.DataFrame(forecast_list)
 #             columns_order = [
 #                 "Day", "Date & Time", "Short Forecast", "Detailed Forecast",
@@ -671,11 +67,10 @@
 #             ]
 #             forecast_df = forecast_df[columns_order]
 #             st.success("NOAA forecast retrieved successfully!")
-
 #             for idx, row in forecast_df.iterrows():
-#                 st.markdown(f"### {row['Day']} - {row['Date & Time']}")
-#                 st.markdown(f"**Short Forecast:** {row['Short Forecast']}")
-#                 with st.expander("More Details"):
+#                 title = f"{row['Day']} - {row['Date & Time']}"
+#                 with st.expander(title):
+#                     st.markdown(f"**Short Forecast:** {row['Short Forecast']}")
 #                     st.markdown(f"**Detailed Forecast:** {row['Detailed Forecast']}")
 #                     st.markdown(f"**Temperature:** {row['Temperature']}")
 #                     st.markdown(f"**Wind Speed:** {row['Wind Speed']}")
@@ -1021,402 +416,6 @@
 #     st.success("HRRR Relative Humidity (%) forecasts (Local Time)!")
 
 
-
-# # import streamlit as st
-# # import requests
-# # import pandas as pd
-# # import s3fs
-# # import numcodecs as ncd
-# # import numpy as np
-# # import datetime
-# # import xarray as xr
-# # import pytz
-# # from timezonefinder import TimezoneFinder
-# # from astral import LocationInfo
-# # from astral.sun import sun
-# # import plotly.graph_objects as go
-# # import cartopy.crs as ccrs
-
-# # # ---------------------------
-# # # PAGE CONFIG & TITLE
-# # # ---------------------------
-# # st.set_page_config(layout="centered")
-# # st.title("NOAA Weather + HRRR Forecast (Local Time, Pinch-Zoom Enabled)")
-
-# # # ----------------------------------
-# # # Default Coordinates (automatically used)
-# # # ----------------------------------
-# # default_lat = 40.65
-# # default_lon = -105.307
-
-# # # --------------------------
-# # # 1. NOAA Forecast Retrieval
-# # # --------------------------
-# # with st.spinner("Retrieving NOAA forecast..."):
-# #     base_url = f"https://api.weather.gov/points/{default_lat},{default_lon}"
-# #     response = requests.get(base_url)
-# #     if response.status_code == 200:
-# #         noaa_data = response.json()
-# #         forecast_url = noaa_data["properties"]["forecast"]
-# #         forecast_response = requests.get(forecast_url)
-# #         if forecast_response.status_code == 200:
-# #             forecast_data = forecast_response.json()
-# #             forecast_list = []
-# #             for period in forecast_data["properties"]["periods"]:
-# #                 startTime = period["startTime"]
-# #                 detailedForecast = period["detailedForecast"]
-# #                 start_dt = datetime.datetime.fromisoformat(startTime[:-6])
-# #                 day_of_week = start_dt.strftime("%A")
-# #                 hour = start_dt.hour
-
-# #                 # If forecast time is between 6:00 PM and 11:59 PM, mark as "Overnight"
-# #                 if 18 <= hour <= 23:
-# #                     display_day = f"{day_of_week} Overnight"
-# #                 else:
-# #                     display_day = day_of_week
-
-# #                 temperature = period.get("temperature")
-# #                 temperature_unit = period.get("temperatureUnit")
-# #                 wind_speed = period.get("windSpeed")
-# #                 wind_direction = period.get("windDirection")
-# #                 short_forecast = period.get("shortForecast")
-# #                 prob_precip = period.get("probabilityOfPrecipitation", {}).get("value")
-
-# #                 forecast_list.append({
-# #                     "Day": display_day,
-# #                     "Date & Time": start_dt.strftime("%B %d, %Y %I:%M %p"),
-# #                     "Short Forecast": short_forecast,
-# #                     "Detailed Forecast": detailedForecast,
-# #                     "Temperature": f"{temperature} {temperature_unit}" if temperature and temperature_unit else "N/A",
-# #                     "Wind Speed": wind_speed,
-# #                     "Wind Direction": wind_direction,
-# #                     "Precipitation Chance (%)": prob_precip if prob_precip is not None else "N/A"
-# #                 })
-
-# #             forecast_df = pd.DataFrame(forecast_list)
-# #             columns_order = [
-# #                 "Day", "Date & Time", "Short Forecast", "Detailed Forecast",
-# #                 "Temperature", "Wind Speed", "Wind Direction", "Precipitation Chance (%)"
-# #             ]
-# #             forecast_df = forecast_df[columns_order]
-# #             st.success("NOAA forecast retrieved successfully!")
-
-# #             for idx, row in forecast_df.iterrows():
-# #                 st.markdown(f"### {row['Day']} - {row['Date & Time']}")
-# #                 st.markdown(f"**Short Forecast:** {row['Short Forecast']}")
-# #                 with st.expander("More Details"):
-# #                     st.markdown(f"**Detailed Forecast:** {row['Detailed Forecast']}")
-# #                     st.markdown(f"**Temperature:** {row['Temperature']}")
-# #                     st.markdown(f"**Wind Speed:** {row['Wind Speed']}")
-# #                     st.markdown(f"**Wind Direction:** {row['Wind Direction']}")
-# #                     st.markdown(f"**Precipitation Chance (%):** {row['Precipitation Chance (%)']}")
-# #         else:
-# #             st.error(f"Failed to retrieve NOAA forecast. Status {forecast_response.status_code}")
-# #     else:
-# #         st.error(f"Failed to retrieve location data from NOAA. Status {response.status_code}")
-
-# # # --------------------------------------------------
-# # # 2. HRRR Forecast Retrieval (Last 5 Cycles)
-# # # --------------------------------------------------
-# # with st.spinner("Retrieving last 5 HRRR forecast cycles (no analysis)..."):
-# #     tz_finder = TimezoneFinder()
-# #     local_tz_name = tz_finder.timezone_at(lng=default_lon, lat=default_lat)
-# #     if local_tz_name is None:
-# #         local_tz_name = "UTC"
-# #     local_tz = pytz.timezone(local_tz_name)
-# #     now_rounded_utc = datetime.datetime.utcnow().replace(minute=0, second=0, microsecond=0, tzinfo=pytz.utc)
-# #     now_local = now_rounded_utc.astimezone(local_tz)
-# #     hour_block = (now_rounded_utc.hour // 6) * 6
-# #     current_cycle_time_utc = now_rounded_utc.replace(hour=hour_block)
-# #     cycle_times_utc = [current_cycle_time_utc - datetime.timedelta(hours=6 * i) for i in range(5)]
-# #     cycle_times_utc.reverse()
-
-# #     level_surface = "surface"
-# #     var_gust = "GUST"
-# #     var_temp = "TMP"
-# #     level_rh = "2m_above_ground"
-# #     var_rh = "RH"
-
-# #     fs = s3fs.S3FileSystem(anon=True)
-# #     chunk_index = xr.open_zarr(s3fs.S3Map("s3://hrrrzarr/grid/HRRR_chunk_index.zarr", s3=fs))
-
-# #     # We need to transform to Lambert Conformal coords
-# #     projection = ccrs.LambertConformal(
-# #         central_longitude=262.5,
-# #         central_latitude=38.5,
-# #         standard_parallels=(38.5, 38.5),
-# #         globe=ccrs.Globe(semimajor_axis=6371229, semiminor_axis=6371229)
-# #     )
-# #     x, y = projection.transform_point(default_lon, default_lat, ccrs.PlateCarree())
-# #     nearest_point = chunk_index.sel(x=x, y=y, method="nearest")
-# #     fcst_chunk_id = f"0.{nearest_point.chunk_id.values}"
-
-# #     def retrieve_data(s3_url):
-# #         with fs.open(s3_url, "rb") as compressed_data:
-# #             buffer = ncd.blosc.decompress(compressed_data.read())
-# #         dtype = "<f4"
-# #         chunk = np.frombuffer(buffer, dtype=dtype)
-# #         entry_size = 150 * 150
-# #         num_entries = len(chunk) // entry_size
-# #         if num_entries == 1:
-# #             data_array = np.reshape(chunk, (150, 150))
-# #         else:
-# #             data_array = np.reshape(chunk, (num_entries, 150, 150))
-# #         return data_array
-
-# #     # -----------------------------
-# #     # Retrieve GUST
-# #     # -----------------------------
-# #     all_forecast_gust = []
-# #     for init_time_utc in cycle_times_utc:
-# #         run_date_str = init_time_utc.strftime("%Y%m%d")
-# #         run_hr_str = init_time_utc.strftime("%H")
-# #         fcst_url = (
-# #             f"hrrrzarr/sfc/{run_date_str}/"
-# #             f"{run_date_str}_{run_hr_str}z_fcst.zarr/{level_surface}/{var_gust}/{level_surface}/{var_gust}/"
-# #         )
-# #         try:
-# #             forecast_data = retrieve_data(fcst_url + fcst_chunk_id)
-# #         except Exception as e:
-# #             print(f"Error retrieving GUST for {init_time_utc} -> {e}")
-# #             continue
-# #         num_fcst_hours = forecast_data.shape[0]
-# #         valid_times_utc = [
-# #             (init_time_utc + datetime.timedelta(hours=i)).replace(tzinfo=pytz.utc)
-# #             for i in range(num_fcst_hours)
-# #         ]
-# #         valid_times_local = [vt.astimezone(local_tz) for vt in valid_times_utc]
-# #         forecast_values = forecast_data[:, nearest_point.in_chunk_y, nearest_point.in_chunk_x]
-# #         all_forecast_gust.append((init_time_utc, valid_times_local, forecast_values))
-
-# #     # -----------------------------
-# #     # Retrieve TMP
-# #     # -----------------------------
-# #     all_forecast_tmp = []
-# #     for init_time_utc in cycle_times_utc:
-# #         run_date_str = init_time_utc.strftime("%Y%m%d")
-# #         run_hr_str = init_time_utc.strftime("%H")
-# #         fcst_url = (
-# #             f"hrrrzarr/sfc/{run_date_str}/"
-# #             f"{run_date_str}_{run_hr_str}z_fcst.zarr/{level_surface}/{var_temp}/{level_surface}/{var_temp}/"
-# #         )
-# #         try:
-# #             forecast_data = retrieve_data(fcst_url + fcst_chunk_id)
-# #         except Exception as e:
-# #             print(f"Error retrieving TMP for {init_time_utc} -> {e}")
-# #             continue
-# #         num_fcst_hours = forecast_data.shape[0]
-# #         valid_times_utc = [
-# #             (init_time_utc + datetime.timedelta(hours=i)).replace(tzinfo=pytz.utc)
-# #             for i in range(num_fcst_hours)
-# #         ]
-# #         valid_times_local = [vt.astimezone(local_tz) for vt in valid_times_utc]
-# #         forecast_values = forecast_data[:, nearest_point.in_chunk_y, nearest_point.in_chunk_x]
-# #         all_forecast_tmp.append((init_time_utc, valid_times_local, forecast_values))
-
-# #     # -----------------------------
-# #     # Retrieve RH
-# #     # -----------------------------
-# #     all_forecast_rh = []
-# #     for init_time_utc in cycle_times_utc:
-# #         run_date_str = init_time_utc.strftime("%Y%m%d")
-# #         run_hr_str = init_time_utc.strftime("%H")
-# #         fcst_url = (
-# #             f"hrrrzarr/sfc/{run_date_str}/"
-# #             f"{run_date_str}_{run_hr_str}z_fcst.zarr/{level_rh}/{var_rh}/{level_rh}/{var_rh}/"
-# #         )
-# #         try:
-# #             forecast_data = retrieve_data(fcst_url + fcst_chunk_id)
-# #         except Exception as e:
-# #             print(f"Error retrieving RH for {init_time_utc} -> {e}")
-# #             continue
-# #         num_fcst_hours = forecast_data.shape[0]
-# #         valid_times_utc = [
-# #             (init_time_utc + datetime.timedelta(hours=i)).replace(tzinfo=pytz.utc)
-# #             for i in range(num_fcst_hours)
-# #         ]
-# #         valid_times_local = [vt.astimezone(local_tz) for vt in valid_times_utc]
-# #         forecast_values = forecast_data[:, nearest_point.in_chunk_y, nearest_point.in_chunk_x]
-# #         all_forecast_rh.append((init_time_utc, valid_times_local, forecast_values))
-
-# # def plot_with_nighttime_shading(var_name, unit, all_data, now_local, local_tz, local_tz_name, lat, lon):
-# #     """
-# #     Create a Plotly figure with:
-# #     - Lines for each HRRR init cycle
-# #     - A dotted vertical line at 'now'
-# #     - Nighttime shading using add_shape, to avoid date-summing issues
-# #     """
-# #     fig = go.Figure()
-# #     colors = [
-# #         "#7A0000","#D4A017","#001F3F","#6F4518","#FF4500","#9400D3",
-# #         "#708090","#2E8B57","#8B0000","#FFD700","#556B2F","#DC143C",
-# #         "#4682B4","#F4A460","#A9A9A9","#5F9EA0","#FF6347"
-# #     ]
-# #     all_times = []
-# #     min_val = None
-# #     max_val = None
-
-# #     for i, (init_time_utc, vtimes_local, fvalues) in enumerate(all_data):
-# #         if len(fvalues) == 0:
-# #             continue
-# #         color = colors[i % len(colors)]
-# #         init_time_local_str = init_time_utc.astimezone(local_tz).strftime("%m-%d %H:%M %Z")
-
-# #         # Convert each datetime to string for Plotly to avoid sum() on datetimes
-# #         # Plotly can handle python datetimes, but older versions can break
-# #         x_str = [dt.isoformat() for dt in vtimes_local]
-
-# #         fig.add_trace(
-# #             go.Scatter(
-# #                 x=x_str,
-# #                 y=fvalues,
-# #                 mode="lines+markers",
-# #                 name=f"Init {init_time_local_str}",
-# #                 marker=dict(symbol="x"),
-# #                 line=dict(color=color)
-# #             )
-# #         )
-# #         local_min = float(np.nanmin(fvalues))
-# #         local_max = float(np.nanmax(fvalues))
-# #         if min_val is None or local_min < min_val:
-# #             min_val = local_min
-# #         if max_val is None or local_max > max_val:
-# #             max_val = local_max
-# #         all_times.extend(vtimes_local)
-
-# #     # We'll add a shape for "Now" (vertical line)
-# #     now_x = now_local.isoformat()
-# #     fig.add_shape(
-# #         type="line",
-# #         x0=now_x, x1=now_x,
-# #         yref="paper", y0=0, y1=1,
-# #         line=dict(color="black", dash="dot")
-# #     )
-# #     # Add an annotation for "Now"
-# #     fig.add_annotation(
-# #         x=now_x,
-# #         y=1.02,
-# #         yref="paper",
-# #         text="Now",
-# #         showarrow=False
-# #     )
-
-# #     # Nighttime shading via shapes
-# #     if all_times:
-# #         earliest_time = min(all_times)
-# #         latest_time = max(all_times)
-# #         location = LocationInfo(
-# #             name="HRRR Location",
-# #             region="",
-# #             timezone=local_tz_name,
-# #             latitude=lat,
-# #             longitude=lon
-# #         )
-# #         current_date = earliest_time.date()
-# #         last_date = latest_time.date()
-# #         while current_date <= last_date:
-# #             s = sun(location.observer, date=current_date, tzinfo=local_tz)
-# #             next_date = current_date + datetime.timedelta(days=1)
-# #             s_next = sun(location.observer, date=next_date, tzinfo=local_tz)
-# #             today_sunset = s["sunset"]
-# #             tomorrow_sunrise = s_next["sunrise"]
-# #             shade_start = max(today_sunset, earliest_time)
-# #             shade_end = min(tomorrow_sunrise, latest_time)
-
-# #             if shade_start < shade_end:
-# #                 # Convert to strings
-# #                 x0_str = shade_start.isoformat()
-# #                 x1_str = shade_end.isoformat()
-# #                 fig.add_shape(
-# #                     type="rect",
-# #                     xref="x", x0=x0_str, x1=x1_str,
-# #                     yref="paper", y0=0, y1=1,
-# #                     fillcolor="lightgray",
-# #                     opacity=0.3,
-# #                     line_width=0
-# #                 )
-# #                 # Add a small label near the top
-# #                 fig.add_annotation(
-# #                     x=x0_str,
-# #                     y=1.02,
-# #                     yref="paper",
-# #                     text="Nighttime",
-# #                     showarrow=False
-# #                 )
-# #             current_date = next_date
-
-# #     # Axis labels and range
-# #     fig.update_layout(
-# #         title=(
-# #             f"HRRR {var_name} ({unit}) Forecasts [Local Time]<br>"
-# #             f"Lat={lat:.2f}, Lon={lon:.2f} | Last 5 Cycles"
-# #         ),
-# #         xaxis_title="Valid Time (Local)",
-# #         yaxis_title=f"{var_name} ({unit})",
-# #         legend=dict(yanchor="middle", xanchor="left", x=1.02, y=0.5),
-# #         xaxis=dict(type="date", showgrid=True),
-# #         yaxis=dict(showgrid=True)
-# #     )
-
-# #     if min_val is not None and max_val is not None:
-# #         buffer = max(3.0, (max_val - min_val) * 0.1)
-# #         fig.update_yaxes(range=[min_val - buffer, max_val + buffer])
-
-# #     return fig
-
-# # # -----------------------------
-# # # FIRST PLOT: GUST (mph)
-# # # -----------------------------
-# # conv_factor_mps_to_mph = 2.23694
-# # gust_data_for_plot = []
-# # for (init_time_utc, vtimes_local, fvalues) in all_forecast_gust:
-# #     # Convert GUST from m/s to mph
-# #     fvalues_mph = fvalues * conv_factor_mps_to_mph
-# #     gust_data_for_plot.append((init_time_utc, vtimes_local, fvalues_mph))
-
-# # gust_fig = plot_with_nighttime_shading(
-# #     var_name="GUST", unit="mph",
-# #     all_data=gust_data_for_plot, now_local=now_local,
-# #     local_tz=local_tz, local_tz_name=local_tz_name,
-# #     lat=default_lat, lon=default_lon
-# # )
-# # st.plotly_chart(gust_fig, use_container_width=True)
-# # st.success("HRRR GUST forecasts (Local Time) with pinch-to-zoom enabled!")
-
-# # # -----------------------------
-# # # SECOND PLOT: TMP (Fahrenheit)
-# # # -----------------------------
-# # temp_data_for_plot = []
-# # for (init_time_utc, vtimes_local, fvalues) in all_forecast_tmp:
-# #     # Convert Kelvin to Fahrenheit
-# #     temp_values_f = (fvalues - 273.15) * 9/5 + 32
-# #     temp_data_for_plot.append((init_time_utc, vtimes_local, temp_values_f))
-
-# # tmp_fig = plot_with_nighttime_shading(
-# #     var_name="TMP", unit="°F",
-# #     all_data=temp_data_for_plot, now_local=now_local,
-# #     local_tz=local_tz, local_tz_name=local_tz_name,
-# #     lat=default_lat, lon=default_lon
-# # )
-# # st.plotly_chart(tmp_fig, use_container_width=True)
-# # st.success("HRRR Temperature (F) forecasts (Local Time) with pinch-to-zoom enabled!")
-
-# # # -----------------------------
-# # # THIRD PLOT: RH (%)
-# # # -----------------------------
-# # rh_data_for_plot = []
-# # for (init_time_utc, vtimes_local, fvalues) in all_forecast_rh:
-# #     rh_data_for_plot.append((init_time_utc, vtimes_local, fvalues))
-
-# # rh_fig = plot_with_nighttime_shading(
-# #     var_name="RH", unit="%", 
-# #     all_data=rh_data_for_plot, now_local=now_local,
-# #     local_tz=local_tz, local_tz_name=local_tz_name,
-# #     lat=default_lat, lon=default_lon
-# # )
-# # st.plotly_chart(rh_fig, use_container_width=True)
-# # st.success("HRRR Relative Humidity (%) forecasts (Local Time) with pinch-to-zoom enabled!")
-
 # import streamlit as st
 # import requests
 # import pandas as pd
@@ -1432,15 +431,617 @@
 # from astral import LocationInfo
 # from astral.sun import sun
 
-# import io
-# import gc
-# from PIL import Image
+# # ---------------------------
+# # PAGE CONFIG & TITLE
+# # ---------------------------
+# st.set_page_config(layout="centered")
+# st.title("NOAA Weather + HRRR Forecast (Local Time)")
+
+# # ----------------------------------
+# # Default Coordinates (automatically used)
+# # ----------------------------------
+# default_lat = 40.65
+# default_lon = -105.307
+
+# # --------------------------
+# # 1. NOAA Forecast Retrieval
+# # --------------------------
+# with st.spinner("Retrieving NOAA forecast..."):
+#     base_url = f"https://api.weather.gov/points/{default_lat},{default_lon}"
+#     response = requests.get(base_url)
+#     if response.status_code == 200:
+#         noaa_data = response.json()
+#         forecast_url = noaa_data["properties"]["forecast"]
+#         forecast_response = requests.get(forecast_url)
+#         if forecast_response.status_code == 200:
+#             forecast_data = forecast_response.json()
+#             forecast_list = []
+#             for period in forecast_data["properties"]["periods"]:
+#                 startTime = period["startTime"]
+#                 detailedForecast = period["detailedForecast"]
+#                 start_dt = datetime.datetime.fromisoformat(startTime[:-6])
+#                 day_of_week = start_dt.strftime("%A")
+#                 temperature = period.get('temperature')
+#                 temperature_unit = period.get('temperatureUnit')
+#                 wind_speed = period.get('windSpeed')
+#                 wind_direction = period.get('windDirection')
+#                 short_forecast = period.get('shortForecast')
+#                 prob_precip = period.get('probabilityOfPrecipitation', {}).get('value')
+#                 forecast_list.append({
+#                     "Day": day_of_week,
+#                     "Date & Time": start_dt.strftime('%B %d, %Y %I:%M %p'),
+#                     "Short Forecast": short_forecast,
+#                     "Detailed Forecast": detailedForecast,
+#                     "Temperature": f"{temperature} {temperature_unit}" if temperature and temperature_unit else "N/A",
+#                     "Wind Speed": wind_speed,
+#                     "Wind Direction": wind_direction,
+#                     "Precipitation Chance (%)": prob_precip if prob_precip is not None else "N/A"
+#                 })
+#             forecast_df = pd.DataFrame(forecast_list)
+#             columns_order = [
+#                 "Day", "Date & Time", "Short Forecast", "Detailed Forecast",
+#                 "Temperature", "Wind Speed", "Wind Direction", "Precipitation Chance (%)"
+#             ]
+#             forecast_df = forecast_df[columns_order]
+#             st.success("NOAA forecast retrieved successfully!")
+
+#             # Display forecast
+#             for idx, row in forecast_df.iterrows():
+#                 # Display Date & Time with Short Forecast directly below it
+#                 st.markdown(f"### {row['Day']} - {row['Date & Time']}")
+#                 st.markdown(f"**Short Forecast:** {row['Short Forecast']}")
+
+#                 # Expander for more details
+#                 with st.expander("More Details"):
+#                     st.markdown(f"**Detailed Forecast:** {row['Detailed Forecast']}")
+#                     st.markdown(f"**Temperature:** {row['Temperature']}")
+#                     st.markdown(f"**Wind Speed:** {row['Wind Speed']}")
+#                     st.markdown(f"**Wind Direction:** {row['Wind Direction']}")
+#                     st.markdown(f"**Precipitation Chance (%):** {row['Precipitation Chance (%)']}")
+#         else:
+#             st.error(f"Failed to retrieve NOAA forecast. Status {forecast_response.status_code}")
+#     else:
+#         st.error(f"Failed to retrieve location data from NOAA. Status {response.status_code}")
+
+
+# import streamlit as st
+# import requests
+# import pandas as pd
+# import datetime
 
 # # ---------------------------
 # # PAGE CONFIG & TITLE
 # # ---------------------------
 # st.set_page_config(layout="centered")
 # st.title("NOAA Weather + HRRR Forecast (Local Time)")
+
+# # ----------------------------------
+# # Default Coordinates (automatically used)
+# # ----------------------------------
+# default_lat = 40.65
+# default_lon = -105.307
+
+# # --------------------------
+# # 1. NOAA Forecast Retrieval
+# # --------------------------
+# with st.spinner("Retrieving NOAA forecast..."):
+#     base_url = f"https://api.weather.gov/points/{default_lat},{default_lon}"
+#     response = requests.get(base_url)
+#     if response.status_code == 200:
+#         noaa_data = response.json()
+#         forecast_url = noaa_data["properties"]["forecast"]
+#         forecast_response = requests.get(forecast_url)
+#         if forecast_response.status_code == 200:
+#             forecast_data = forecast_response.json()
+#             forecast_list = []
+#             for period in forecast_data["properties"]["periods"]:
+#                 startTime = period["startTime"]
+#                 detailedForecast = period["detailedForecast"]
+#                 start_dt = datetime.datetime.fromisoformat(startTime[:-6])
+#                 day_of_week = start_dt.strftime("%A")
+#                 hour = start_dt.hour  # Extract hour from datetime
+
+#                 # If the forecast is between 6:00 PM and 11:59 PM, mark it as "Overnight"
+#                 if 18 <= hour <= 23:
+#                     display_day = f"{day_of_week} Overnight"
+#                 else:
+#                     display_day = day_of_week
+
+#                 temperature = period.get('temperature')
+#                 temperature_unit = period.get('temperatureUnit')
+#                 wind_speed = period.get('windSpeed')
+#                 wind_direction = period.get('windDirection')
+#                 short_forecast = period.get('shortForecast')
+#                 prob_precip = period.get('probabilityOfPrecipitation', {}).get('value')
+
+#                 forecast_list.append({
+#                     "Day": display_day,
+#                     "Date & Time": start_dt.strftime('%B %d, %Y %I:%M %p'),
+#                     "Short Forecast": short_forecast,
+#                     "Detailed Forecast": detailedForecast,
+#                     "Temperature": f"{temperature} {temperature_unit}" if temperature and temperature_unit else "N/A",
+#                     "Wind Speed": wind_speed,
+#                     "Wind Direction": wind_direction,
+#                     "Precipitation Chance (%)": prob_precip if prob_precip is not None else "N/A"
+#                 })
+
+#             forecast_df = pd.DataFrame(forecast_list)
+#             columns_order = [
+#                 "Day", "Date & Time", "Short Forecast", "Detailed Forecast",
+#                 "Temperature", "Wind Speed", "Wind Direction", "Precipitation Chance (%)"
+#             ]
+#             forecast_df = forecast_df[columns_order]
+#             st.success("NOAA forecast retrieved successfully!")
+
+#             # Display forecast
+#             for idx, row in forecast_df.iterrows():
+#                 # Display Date & Time with Short Forecast directly below it
+#                 st.markdown(f"### {row['Day']} - {row['Date & Time']}")
+#                 st.markdown(f"**Short Forecast:** {row['Short Forecast']}")
+
+#                 # Expander for more details
+#                 with st.expander("More Details"):
+#                     st.markdown(f"**Detailed Forecast:** {row['Detailed Forecast']}")
+#                     st.markdown(f"**Temperature:** {row['Temperature']}")
+#                     st.markdown(f"**Wind Speed:** {row['Wind Speed']}")
+#                     st.markdown(f"**Wind Direction:** {row['Wind Direction']}")
+#                     st.markdown(f"**Precipitation Chance (%):** {row['Precipitation Chance (%)']}")
+
+#         else:
+#             st.error(f"Failed to retrieve NOAA forecast. Status {forecast_response.status_code}")
+#     else:
+#         st.error(f"Failed to retrieve location data from NOAA. Status {response.status_code}")
+
+
+import streamlit as st
+import requests
+import pandas as pd
+import s3fs
+import numcodecs as ncd
+import numpy as np
+import datetime
+import xarray as xr
+import cartopy.crs as ccrs
+import matplotlib.pyplot as plt
+import pytz
+from timezonefinder import TimezoneFinder
+from astral import LocationInfo
+from astral.sun import sun
+
+# ---------------------------
+# PAGE CONFIG & TITLE
+# ---------------------------
+st.set_page_config(layout="centered")
+st.title("NOAA Weather + HRRR Forecast (Local Time)")
+
+# ----------------------------------
+# Default Coordinates (automatically used)
+# ----------------------------------
+default_lat = 40.65
+default_lon = -105.307
+
+# --------------------------
+# 1. NOAA Forecast Retrieval
+# --------------------------
+with st.spinner("Retrieving NOAA forecast..."):
+    base_url = f"https://api.weather.gov/points/{default_lat},{default_lon}"
+    response = requests.get(base_url)
+    if response.status_code == 200:
+        noaa_data = response.json()
+        forecast_url = noaa_data["properties"]["forecast"]
+        forecast_response = requests.get(forecast_url)
+        if forecast_response.status_code == 200:
+            forecast_data = forecast_response.json()
+            forecast_list = []
+            for period in forecast_data["properties"]["periods"]:
+                startTime = period["startTime"]
+                detailedForecast = period["detailedForecast"]
+                start_dt = datetime.datetime.fromisoformat(startTime[:-6])
+                day_of_week = start_dt.strftime("%A")
+                hour = start_dt.hour
+
+                # If forecast time is between 6:00 PM and 11:59 PM, mark as "Overnight"
+                if 18 <= hour <= 23:
+                    display_day = f"{day_of_week} Overnight"
+                else:
+                    display_day = day_of_week
+
+                temperature = period.get('temperature')
+                temperature_unit = period.get('temperatureUnit')
+                wind_speed = period.get('windSpeed')
+                wind_direction = period.get('windDirection')
+                short_forecast = period.get('shortForecast')
+                prob_precip = period.get('probabilityOfPrecipitation', {}).get('value')
+
+                forecast_list.append({
+                    "Day": display_day,
+                    "Date & Time": start_dt.strftime('%B %d, %Y %I:%M %p'),
+                    "Short Forecast": short_forecast,
+                    "Detailed Forecast": detailedForecast,
+                    "Temperature": f"{temperature} {temperature_unit}" if temperature and temperature_unit else "N/A",
+                    "Wind Speed": wind_speed,
+                    "Wind Direction": wind_direction,
+                    "Precipitation Chance (%)": prob_precip if prob_precip is not None else "N/A"
+                })
+
+            forecast_df = pd.DataFrame(forecast_list)
+            columns_order = [
+                "Day", "Date & Time", "Short Forecast", "Detailed Forecast",
+                "Temperature", "Wind Speed", "Wind Direction", "Precipitation Chance (%)"
+            ]
+            forecast_df = forecast_df[columns_order]
+            st.success("NOAA forecast retrieved successfully!")
+
+            for idx, row in forecast_df.iterrows():
+                st.markdown(f"### {row['Day']} - {row['Date & Time']}")
+                st.markdown(f"**Short Forecast:** {row['Short Forecast']}")
+                with st.expander("More Details"):
+                    st.markdown(f"**Detailed Forecast:** {row['Detailed Forecast']}")
+                    st.markdown(f"**Temperature:** {row['Temperature']}")
+                    st.markdown(f"**Wind Speed:** {row['Wind Speed']}")
+                    st.markdown(f"**Wind Direction:** {row['Wind Direction']}")
+                    st.markdown(f"**Precipitation Chance (%):** {row['Precipitation Chance (%)']}")
+        else:
+            st.error(f"Failed to retrieve NOAA forecast. Status {forecast_response.status_code}")
+    else:
+        st.error(f"Failed to retrieve location data from NOAA. Status {response.status_code}")
+
+# --------------------------------------------------
+# 2. HRRR Forecast Retrieval (Last 5 Cycles)
+# --------------------------------------------------
+with st.spinner("Retrieving last 5 HRRR forecast cycles (no analysis)..."):
+    tz_finder = TimezoneFinder()
+    local_tz_name = tz_finder.timezone_at(lng=default_lon, lat=default_lat)
+    if local_tz_name is None:
+        local_tz_name = "UTC"
+    local_tz = pytz.timezone(local_tz_name)
+    now_rounded_utc = datetime.datetime.utcnow().replace(minute=0, second=0, microsecond=0, tzinfo=pytz.utc)
+    now_local = now_rounded_utc.astimezone(local_tz)
+    hour_block = (now_rounded_utc.hour // 6) * 6
+    current_cycle_time_utc = now_rounded_utc.replace(hour=hour_block)
+    cycle_times_utc = [current_cycle_time_utc - datetime.timedelta(hours=6 * i) for i in range(5)]
+    cycle_times_utc.reverse()
+
+    level_surface = 'surface'
+    var_gust = 'GUST'
+    var_temp = 'TMP'
+    level_rh = '2m_above_ground'
+    var_rh = 'RH'
+
+    fs = s3fs.S3FileSystem(anon=True)
+    chunk_index = xr.open_zarr(s3fs.S3Map("s3://hrrrzarr/grid/HRRR_chunk_index.zarr", s3=fs))
+    projection = ccrs.LambertConformal(
+        central_longitude=262.5,
+        central_latitude=38.5,
+        standard_parallels=(38.5, 38.5),
+        globe=ccrs.Globe(semimajor_axis=6371229, semiminor_axis=6371229)
+    )
+    x, y = projection.transform_point(default_lon, default_lat, ccrs.PlateCarree())
+    nearest_point = chunk_index.sel(x=x, y=y, method="nearest")
+    fcst_chunk_id = f"0.{nearest_point.chunk_id.values}"
+
+    def retrieve_data(s3_url):
+        with fs.open(s3_url, 'rb') as compressed_data:
+            buffer = ncd.blosc.decompress(compressed_data.read())
+        dtype = "<f4"
+        chunk = np.frombuffer(buffer, dtype=dtype)
+        entry_size = 150 * 150
+        num_entries = len(chunk) // entry_size
+        if num_entries == 1:
+            data_array = np.reshape(chunk, (150, 150))
+        else:
+            data_array = np.reshape(chunk, (num_entries, 150, 150))
+        return data_array
+
+    # -----------------------------
+    # Retrieve GUST
+    # -----------------------------
+    all_forecast_gust = []
+    for init_time_utc in cycle_times_utc:
+        run_date_str = init_time_utc.strftime("%Y%m%d")
+        run_hr_str = init_time_utc.strftime("%H")
+        fcst_url = (
+            f"hrrrzarr/sfc/{run_date_str}/"
+            f"{run_date_str}_{run_hr_str}z_fcst.zarr/{level_surface}/{var_gust}/{level_surface}/{var_gust}/"
+        )
+        try:
+            forecast_data = retrieve_data(fcst_url + fcst_chunk_id)
+        except Exception as e:
+            print(f"Error retrieving GUST for {init_time_utc} -> {e}")
+            continue
+        num_fcst_hours = forecast_data.shape[0]
+        valid_times_utc = [
+            (init_time_utc + datetime.timedelta(hours=i)).replace(tzinfo=pytz.utc)
+            for i in range(num_fcst_hours)
+        ]
+        valid_times_local = [vt.astimezone(local_tz) for vt in valid_times_utc]
+        forecast_values = forecast_data[:, nearest_point.in_chunk_y, nearest_point.in_chunk_x]
+        all_forecast_gust.append((init_time_utc, valid_times_local, forecast_values))
+
+    # -----------------------------
+    # Retrieve TMP
+    # -----------------------------
+    all_forecast_tmp = []
+    for init_time_utc in cycle_times_utc:
+        run_date_str = init_time_utc.strftime("%Y%m%d")
+        run_hr_str = init_time_utc.strftime("%H")
+        fcst_url = (
+            f"hrrrzarr/sfc/{run_date_str}/"
+            f"{run_date_str}_{run_hr_str}z_fcst.zarr/{level_surface}/{var_temp}/{level_surface}/{var_temp}/"
+        )
+        try:
+            forecast_data = retrieve_data(fcst_url + fcst_chunk_id)
+        except Exception as e:
+            print(f"Error retrieving TMP for {init_time_utc} -> {e}")
+            continue
+        num_fcst_hours = forecast_data.shape[0]
+        valid_times_utc = [
+            (init_time_utc + datetime.timedelta(hours=i)).replace(tzinfo=pytz.utc)
+            for i in range(num_fcst_hours)
+        ]
+        valid_times_local = [vt.astimezone(local_tz) for vt in valid_times_utc]
+        forecast_values = forecast_data[:, nearest_point.in_chunk_y, nearest_point.in_chunk_x]
+        all_forecast_tmp.append((init_time_utc, valid_times_local, forecast_values))
+
+    # -----------------------------
+    # Retrieve RH
+    # -----------------------------
+    all_forecast_rh = []
+    for init_time_utc in cycle_times_utc:
+        run_date_str = init_time_utc.strftime("%Y%m%d")
+        run_hr_str = init_time_utc.strftime("%H")
+        fcst_url = (
+            f"hrrrzarr/sfc/{run_date_str}/"
+            f"{run_date_str}_{run_hr_str}z_fcst.zarr/{level_rh}/{var_rh}/{level_rh}/{var_rh}/"
+        )
+        try:
+            forecast_data = retrieve_data(fcst_url + fcst_chunk_id)
+        except Exception as e:
+            print(f"Error retrieving RH for {init_time_utc} -> {e}")
+            continue
+        num_fcst_hours = forecast_data.shape[0]
+        valid_times_utc = [
+            (init_time_utc + datetime.timedelta(hours=i)).replace(tzinfo=pytz.utc)
+            for i in range(num_fcst_hours)
+        ]
+        valid_times_local = [vt.astimezone(local_tz) for vt in valid_times_utc]
+        forecast_values = forecast_data[:, nearest_point.in_chunk_y, nearest_point.in_chunk_x]
+        all_forecast_rh.append((init_time_utc, valid_times_local, forecast_values))
+
+# -----------------------------
+# FIRST PLOT: GUST
+# -----------------------------
+fig, ax = plt.subplots(figsize=(10, 5))
+ax.set_title(
+    f'HRRR {var_gust} (mph) Forecasts [Local Time]\nLat={default_lat:.2f}, Lon={default_lon:.2f} | Last 5 Cycles'
+)
+ax.set_xlabel('Valid Time (Local)')
+ax.set_ylabel(f'{var_gust} (mph)')
+colors = [
+    "#7A0000","#D4A017","#001F3F","#6F4518","#FF4500","#9400D3",
+    "#708090","#2E8B57","#8B0000","#FFD700","#556B2F","#DC143C",
+    "#4682B4","#F4A460","#A9A9A9","#5F9EA0","#FF6347"
+]
+conv_factor_mps_to_mph = 2.23694
+max_fcst_val_gust = 0
+all_times = []
+for i, (init_time_utc, vtimes_local, fvalues) in enumerate(all_forecast_gust):
+    fvalues_mph = fvalues * conv_factor_mps_to_mph
+    if len(fvalues_mph) > 0:
+        max_fcst_val_gust = max(max_fcst_val_gust, np.nanmax(fvalues_mph))
+    color = colors[i % len(colors)]
+    init_time_local_str = init_time_utc.astimezone(local_tz).strftime("%m-%d %H:%M %Z")
+    ax.plot(
+        vtimes_local, fvalues_mph,
+        color=color, marker='x', linestyle='-',
+        label=f'Init {init_time_local_str}'
+    )
+    all_times.extend(vtimes_local)
+ax.axvline(x=now_local, color='black', linestyle=':', label='Now')
+if all_times:
+    earliest_time = min(all_times)
+    latest_time = max(all_times)
+    location = LocationInfo(
+        name="HRRR Location",
+        region="",
+        timezone=local_tz_name,
+        latitude=default_lat,
+        longitude=default_lon
+    )
+    current_date = earliest_time.date()
+    last_date = latest_time.date()
+    label_used = False
+    while current_date <= last_date:
+        s = sun(location.observer, date=current_date, tzinfo=local_tz)
+        next_date = current_date + datetime.timedelta(days=1)
+        s_next = sun(location.observer, date=next_date, tzinfo=local_tz)
+        today_sunset = s['sunset']
+        tomorrow_sunrise = s_next['sunrise']
+        shade_start = max(today_sunset, earliest_time)
+        shade_end = min(tomorrow_sunrise, latest_time)
+        if shade_start < shade_end:
+            ax.axvspan(
+                shade_start, shade_end,
+                facecolor='lightgray', alpha=0.3,
+                label='Nighttime' if not label_used else ""
+            )
+            label_used = True
+        current_date = next_date
+ax.set_ylim(0, max_fcst_val_gust + 5 if max_fcst_val_gust else 10)
+ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+ax.grid(True)
+fig.autofmt_xdate(rotation=45)
+st.pyplot(fig)
+st.success("HRRR GUST forecasts (Local Time)!")
+
+# -----------------------------
+# SECOND PLOT: TMP (Fahrenheit)
+# -----------------------------
+with st.spinner("Plotting HRRR temperature..."):
+    fig2, ax2 = plt.subplots(figsize=(10, 5))
+    ax2.set_title(
+        f'HRRR {var_temp} (°F) Forecasts [Local Time]\nLat={default_lat:.2f}, Lon={default_lon:.2f} | Last 5 Cycles'
+    )
+    ax2.set_xlabel('Valid Time (Local)')
+    ax2.set_ylabel(f'{var_temp} (°F)')
+    colors_tmp = [
+        "#7A0000","#D4A017","#001F3F","#6F4518","#FF4500","#9400D3",
+        "#708090","#2E8B57","#8B0000","#FFD700","#556B2F","#DC143C",
+        "#4682B4","#F4A460","#A9A9A9","#5F9EA0","#FF6347"
+    ]
+    max_fcst_val_tmp = None
+    min_fcst_val_tmp = None
+    all_times_tmp = []
+    for i, (init_time_utc, vtimes_local, fvalues) in enumerate(all_forecast_tmp):
+        temp_values_f = (fvalues - 273.15) * 9/5 + 32
+        if len(temp_values_f) > 0:
+            local_min = np.nanmin(temp_values_f)
+            local_max = np.nanmax(temp_values_f)
+            if min_fcst_val_tmp is None or local_min < min_fcst_val_tmp:
+                min_fcst_val_tmp = local_min
+            if max_fcst_val_tmp is None or local_max > max_fcst_val_tmp:
+                max_fcst_val_tmp = local_max
+        color = colors_tmp[i % len(colors_tmp)]
+        init_time_local_str = init_time_utc.astimezone(local_tz).strftime("%m-%d %H:%M %Z")
+        ax2.plot(
+            vtimes_local, temp_values_f,
+            color=color, marker='x', linestyle='-',
+            label=f'Init {init_time_local_str}'
+        )
+        all_times_tmp.extend(vtimes_local)
+    ax2.axvline(x=now_local, color='black', linestyle=':', label='Now')
+    if all_times_tmp:
+        earliest_time = min(all_times_tmp)
+        latest_time = max(all_times_tmp)
+        location = LocationInfo(
+            name="HRRR Location",
+            region="",
+            timezone=local_tz_name,
+            latitude=default_lat,
+            longitude=default_lon
+        )
+        current_date = earliest_time.date()
+        last_date = latest_time.date()
+        label_used = False
+        while current_date <= last_date:
+            s = sun(location.observer, date=current_date, tzinfo=local_tz)
+            next_date = current_date + datetime.timedelta(days=1)
+            s_next = sun(location.observer, date=next_date, tzinfo=local_tz)
+            today_sunset = s['sunset']
+            tomorrow_sunrise = s_next['sunrise']
+            shade_start = max(today_sunset, earliest_time)
+            shade_end = min(tomorrow_sunrise, latest_time)
+            if shade_start < shade_end:
+                ax2.axvspan(
+                    shade_start, shade_end,
+                    facecolor='lightgray', alpha=0.3,
+                    label='Nighttime' if not label_used else ""
+                )
+                label_used = True
+            current_date = next_date
+    if max_fcst_val_tmp is not None:
+        ax2.set_ylim(min_fcst_val_tmp - 10, max_fcst_val_tmp + 10)
+    else:
+        ax2.set_ylim(0, 100)
+    ax2.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+    ax2.grid(True)
+    fig2.autofmt_xdate(rotation=45)
+    st.pyplot(fig2)
+    st.success("HRRR Temperature (F) forecasts (Local Time)!")
+
+# -----------------------------
+# THIRD PLOT: RH (%)
+# -----------------------------
+with st.spinner("Plotting HRRR Relative Humidity..."):
+    fig3, ax3 = plt.subplots(figsize=(10, 5))
+    ax3.set_title(
+        f'HRRR {var_rh} (%) Forecasts [Local Time]\nLat={default_lat:.2f}, Lon={default_lon:.2f} | Last 5 Cycles'
+    )
+    ax3.set_xlabel('Valid Time (Local)')
+    ax3.set_ylabel(f'{var_rh} (%)')
+    colors_rh = [
+        "#7A0000","#D4A017","#001F3F","#6F4518","#FF4500","#9400D3",
+        "#708090","#2E8B57","#8B0000","#FFD700","#556B2F","#DC143C",
+        "#4682B4","#F4A460","#A9A9A9","#5F9EA0","#FF6347"
+    ]
+    max_fcst_val_rh = None
+    all_times_rh = []
+    for i, (init_time_utc, vtimes_local, fvalues) in enumerate(all_forecast_rh):
+        rh_values = fvalues
+        if len(rh_values) > 0:
+            local_max = np.nanmax(rh_values)
+            if max_fcst_val_rh is None or local_max > max_fcst_val_rh:
+                max_fcst_val_rh = local_max
+        color = colors_rh[i % len(colors_rh)]
+        init_time_local_str = init_time_utc.astimezone(local_tz).strftime("%m-%d %H:%M %Z")
+        ax3.plot(
+            vtimes_local, rh_values,
+            color=color, marker='x', linestyle='-',
+            label=f'Init {init_time_local_str}'
+        )
+        all_times_rh.extend(vtimes_local)
+    ax3.axvline(x=now_local, color='black', linestyle=':', label='Now')
+    if all_times_rh:
+        earliest_time = min(all_times_rh)
+        latest_time = max(all_times_rh)
+        location = LocationInfo(
+            name="HRRR Location",
+            region="",
+            timezone=local_tz_name,
+            latitude=default_lat,
+            longitude=default_lon
+        )
+        current_date = earliest_time.date()
+        last_date = latest_time.date()
+        label_used = False
+        while current_date <= last_date:
+            s = sun(location.observer, date=current_date, tzinfo=local_tz)
+            next_date = current_date + datetime.timedelta(days=1)
+            s_next = sun(location.observer, date=next_date, tzinfo=local_tz)
+            today_sunset = s['sunset']
+            tomorrow_sunrise = s_next['sunrise']
+            shade_start = max(today_sunset, earliest_time)
+            shade_end = min(tomorrow_sunrise, latest_time)
+            if shade_start < shade_end:
+                ax3.axvspan(
+                    shade_start, shade_end,
+                    facecolor='lightgray', alpha=0.3,
+                    label='Nighttime' if not label_used else ""
+                )
+                label_used = True
+            current_date = next_date
+    if max_fcst_val_rh is not None:
+        ax3.set_ylim(0, min(max_fcst_val_rh + 10, 100))
+    else:
+        ax3.set_ylim(0, 100)
+    ax3.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+    ax3.grid(True)
+    fig3.autofmt_xdate(rotation=45)
+    st.pyplot(fig3)
+    st.success("HRRR Relative Humidity (%) forecasts (Local Time)!")
+
+
+
+# import streamlit as st
+# import requests
+# import pandas as pd
+# import s3fs
+# import numcodecs as ncd
+# import numpy as np
+# import datetime
+# import xarray as xr
+# import pytz
+# from timezonefinder import TimezoneFinder
+# from astral import LocationInfo
+# from astral.sun import sun
+# import plotly.graph_objects as go
+# import cartopy.crs as ccrs
+
+# # ---------------------------
+# # PAGE CONFIG & TITLE
+# # ---------------------------
+# st.set_page_config(layout="centered")
+# st.title("NOAA Weather + HRRR Forecast (Local Time, Pinch-Zoom Enabled)")
 
 # # ----------------------------------
 # # Default Coordinates (automatically used)
@@ -1474,16 +1075,16 @@
 #                 else:
 #                     display_day = day_of_week
 
-#                 temperature = period.get('temperature')
-#                 temperature_unit = period.get('temperatureUnit')
-#                 wind_speed = period.get('windSpeed')
-#                 wind_direction = period.get('windDirection')
-#                 short_forecast = period.get('shortForecast')
-#                 prob_precip = period.get('probabilityOfPrecipitation', {}).get('value')
+#                 temperature = period.get("temperature")
+#                 temperature_unit = period.get("temperatureUnit")
+#                 wind_speed = period.get("windSpeed")
+#                 wind_direction = period.get("windDirection")
+#                 short_forecast = period.get("shortForecast")
+#                 prob_precip = period.get("probabilityOfPrecipitation", {}).get("value")
 
 #                 forecast_list.append({
 #                     "Day": display_day,
-#                     "Date & Time": start_dt.strftime('%B %d, %Y %I:%M %p'),
+#                     "Date & Time": start_dt.strftime("%B %d, %Y %I:%M %p"),
 #                     "Short Forecast": short_forecast,
 #                     "Detailed Forecast": detailedForecast,
 #                     "Temperature": f"{temperature} {temperature_unit}" if temperature and temperature_unit else "N/A",
@@ -1530,14 +1131,16 @@
 #     cycle_times_utc = [current_cycle_time_utc - datetime.timedelta(hours=6 * i) for i in range(5)]
 #     cycle_times_utc.reverse()
 
-#     level_surface = 'surface'
-#     var_gust = 'GUST'
-#     var_temp = 'TMP'
-#     level_rh = '2m_above_ground'
-#     var_rh = 'RH'
+#     level_surface = "surface"
+#     var_gust = "GUST"
+#     var_temp = "TMP"
+#     level_rh = "2m_above_ground"
+#     var_rh = "RH"
 
 #     fs = s3fs.S3FileSystem(anon=True)
 #     chunk_index = xr.open_zarr(s3fs.S3Map("s3://hrrrzarr/grid/HRRR_chunk_index.zarr", s3=fs))
+
+#     # We need to transform to Lambert Conformal coords
 #     projection = ccrs.LambertConformal(
 #         central_longitude=262.5,
 #         central_latitude=38.5,
@@ -1549,7 +1152,7 @@
 #     fcst_chunk_id = f"0.{nearest_point.chunk_id.values}"
 
 #     def retrieve_data(s3_url):
-#         with fs.open(s3_url, 'rb') as compressed_data:
+#         with fs.open(s3_url, "rb") as compressed_data:
 #             buffer = ncd.blosc.decompress(compressed_data.read())
 #         dtype = "<f4"
 #         chunk = np.frombuffer(buffer, dtype=dtype)
@@ -1636,295 +1239,183 @@
 #         forecast_values = forecast_data[:, nearest_point.in_chunk_y, nearest_point.in_chunk_x]
 #         all_forecast_rh.append((init_time_utc, valid_times_local, forecast_values))
 
-# # -----------------------------
-# # FIRST PLOT: GUST
-# # -----------------------------
-# fig, ax = plt.subplots(figsize=(10, 5))
-# ax.set_title(
-#     f'HRRR {var_gust} (mph) Forecasts [Local Time]\nLat={default_lat:.2f}, Lon={default_lon:.2f} | Last 5 Cycles'
-# )
-# ax.set_xlabel('Valid Time (Local)')
-# ax.set_ylabel(f'{var_gust} (mph)')
-# colors = [
-#     "#7A0000","#D4A017","#001F3F","#6F4518","#FF4500","#9400D3",
-#     "#708090","#2E8B57","#8B0000","#FFD700","#556B2F","#DC143C",
-#     "#4682B4","#F4A460","#A9A9A9","#5F9EA0","#FF6347"
-# ]
-# conv_factor_mps_to_mph = 2.23694
-# max_fcst_val_gust = 0
-# all_times = []
-# for i, (init_time_utc, vtimes_local, fvalues) in enumerate(all_forecast_gust):
-#     fvalues_mph = fvalues * conv_factor_mps_to_mph
-#     if len(fvalues_mph) > 0:
-#         max_fcst_val_gust = max(max_fcst_val_gust, np.nanmax(fvalues_mph))
-#     color = colors[i % len(colors)]
-#     init_time_local_str = init_time_utc.astimezone(local_tz).strftime("%m-%d %H:%M %Z")
-#     ax.plot(
-#         vtimes_local, fvalues_mph,
-#         color=color, marker='x', linestyle='-',
-#         label=f'Init {init_time_local_str}'
-#     )
-#     all_times.extend(vtimes_local)
-# ax.axvline(x=now_local, color='black', linestyle=':', label='Now')
-# if all_times:
-#     earliest_time = min(all_times)
-#     latest_time = max(all_times)
-#     location = LocationInfo(
-#         name="HRRR Location",
-#         region="",
-#         timezone=local_tz_name,
-#         latitude=default_lat,
-#         longitude=default_lon
-#     )
-#     current_date = earliest_time.date()
-#     last_date = latest_time.date()
-#     label_used = False
-#     while current_date <= last_date:
-#         s = sun(location.observer, date=current_date, tzinfo=local_tz)
-#         next_date = current_date + datetime.timedelta(days=1)
-#         s_next = sun(location.observer, date=next_date, tzinfo=local_tz)
-#         today_sunset = s['sunset']
-#         tomorrow_sunrise = s_next['sunrise']
-#         shade_start = max(today_sunset, earliest_time)
-#         shade_end = min(tomorrow_sunrise, latest_time)
-#         if shade_start < shade_end:
-#             ax.axvspan(
-#                 shade_start, shade_end,
-#                 facecolor='lightgray', alpha=0.3,
-#                 label='Nighttime' if not label_used else ""
+# def plot_with_nighttime_shading(var_name, unit, all_data, now_local, local_tz, local_tz_name, lat, lon):
+#     """
+#     Create a Plotly figure with:
+#     - Lines for each HRRR init cycle
+#     - A dotted vertical line at 'now'
+#     - Nighttime shading using add_shape, to avoid date-summing issues
+#     """
+#     fig = go.Figure()
+#     colors = [
+#         "#7A0000","#D4A017","#001F3F","#6F4518","#FF4500","#9400D3",
+#         "#708090","#2E8B57","#8B0000","#FFD700","#556B2F","#DC143C",
+#         "#4682B4","#F4A460","#A9A9A9","#5F9EA0","#FF6347"
+#     ]
+#     all_times = []
+#     min_val = None
+#     max_val = None
+
+#     for i, (init_time_utc, vtimes_local, fvalues) in enumerate(all_data):
+#         if len(fvalues) == 0:
+#             continue
+#         color = colors[i % len(colors)]
+#         init_time_local_str = init_time_utc.astimezone(local_tz).strftime("%m-%d %H:%M %Z")
+
+#         # Convert each datetime to string for Plotly to avoid sum() on datetimes
+#         # Plotly can handle python datetimes, but older versions can break
+#         x_str = [dt.isoformat() for dt in vtimes_local]
+
+#         fig.add_trace(
+#             go.Scatter(
+#                 x=x_str,
+#                 y=fvalues,
+#                 mode="lines+markers",
+#                 name=f"Init {init_time_local_str}",
+#                 marker=dict(symbol="x"),
+#                 line=dict(color=color)
 #             )
-#             label_used = True
-#         current_date = next_date
-# ax.set_ylim(0, max_fcst_val_gust + 5 if max_fcst_val_gust else 10)
-# ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
-# ax.grid(True)
-# fig.autofmt_xdate(rotation=45)
-# st.pyplot(fig)
-# st.success("HRRR GUST forecasts (Local Time)!")
+#         )
+#         local_min = float(np.nanmin(fvalues))
+#         local_max = float(np.nanmax(fvalues))
+#         if min_val is None or local_min < min_val:
+#             min_val = local_min
+#         if max_val is None or local_max > max_val:
+#             max_val = local_max
+#         all_times.extend(vtimes_local)
+
+#     # We'll add a shape for "Now" (vertical line)
+#     now_x = now_local.isoformat()
+#     fig.add_shape(
+#         type="line",
+#         x0=now_x, x1=now_x,
+#         yref="paper", y0=0, y1=1,
+#         line=dict(color="black", dash="dot")
+#     )
+#     # Add an annotation for "Now"
+#     fig.add_annotation(
+#         x=now_x,
+#         y=1.02,
+#         yref="paper",
+#         text="Now",
+#         showarrow=False
+#     )
+
+#     # Nighttime shading via shapes
+#     if all_times:
+#         earliest_time = min(all_times)
+#         latest_time = max(all_times)
+#         location = LocationInfo(
+#             name="HRRR Location",
+#             region="",
+#             timezone=local_tz_name,
+#             latitude=lat,
+#             longitude=lon
+#         )
+#         current_date = earliest_time.date()
+#         last_date = latest_time.date()
+#         while current_date <= last_date:
+#             s = sun(location.observer, date=current_date, tzinfo=local_tz)
+#             next_date = current_date + datetime.timedelta(days=1)
+#             s_next = sun(location.observer, date=next_date, tzinfo=local_tz)
+#             today_sunset = s["sunset"]
+#             tomorrow_sunrise = s_next["sunrise"]
+#             shade_start = max(today_sunset, earliest_time)
+#             shade_end = min(tomorrow_sunrise, latest_time)
+
+#             if shade_start < shade_end:
+#                 # Convert to strings
+#                 x0_str = shade_start.isoformat()
+#                 x1_str = shade_end.isoformat()
+#                 fig.add_shape(
+#                     type="rect",
+#                     xref="x", x0=x0_str, x1=x1_str,
+#                     yref="paper", y0=0, y1=1,
+#                     fillcolor="lightgray",
+#                     opacity=0.3,
+#                     line_width=0
+#                 )
+#                 # Add a small label near the top
+#                 fig.add_annotation(
+#                     x=x0_str,
+#                     y=1.02,
+#                     yref="paper",
+#                     text="Nighttime",
+#                     showarrow=False
+#                 )
+#             current_date = next_date
+
+#     # Axis labels and range
+#     fig.update_layout(
+#         title=(
+#             f"HRRR {var_name} ({unit}) Forecasts [Local Time]<br>"
+#             f"Lat={lat:.2f}, Lon={lon:.2f} | Last 5 Cycles"
+#         ),
+#         xaxis_title="Valid Time (Local)",
+#         yaxis_title=f"{var_name} ({unit})",
+#         legend=dict(yanchor="middle", xanchor="left", x=1.02, y=0.5),
+#         xaxis=dict(type="date", showgrid=True),
+#         yaxis=dict(showgrid=True)
+#     )
+
+#     if min_val is not None and max_val is not None:
+#         buffer = max(3.0, (max_val - min_val) * 0.1)
+#         fig.update_yaxes(range=[min_val - buffer, max_val + buffer])
+
+#     return fig
+
+# # -----------------------------
+# # FIRST PLOT: GUST (mph)
+# # -----------------------------
+# conv_factor_mps_to_mph = 2.23694
+# gust_data_for_plot = []
+# for (init_time_utc, vtimes_local, fvalues) in all_forecast_gust:
+#     # Convert GUST from m/s to mph
+#     fvalues_mph = fvalues * conv_factor_mps_to_mph
+#     gust_data_for_plot.append((init_time_utc, vtimes_local, fvalues_mph))
+
+# gust_fig = plot_with_nighttime_shading(
+#     var_name="GUST", unit="mph",
+#     all_data=gust_data_for_plot, now_local=now_local,
+#     local_tz=local_tz, local_tz_name=local_tz_name,
+#     lat=default_lat, lon=default_lon
+# )
+# st.plotly_chart(gust_fig, use_container_width=True)
+# st.success("HRRR GUST forecasts (Local Time) with pinch-to-zoom enabled!")
 
 # # -----------------------------
 # # SECOND PLOT: TMP (Fahrenheit)
 # # -----------------------------
-# with st.spinner("Plotting HRRR temperature..."):
-#     fig2, ax2 = plt.subplots(figsize=(10, 5))
-#     ax2.set_title(
-#         f'HRRR {var_temp} (°F) Forecasts [Local Time]\nLat={default_lat:.2f}, Lon={default_lon:.2f} | Last 5 Cycles'
-#     )
-#     ax2.set_xlabel('Valid Time (Local)')
-#     ax2.set_ylabel(f'{var_temp} (°F)')
-#     colors_tmp = [
-#         "#7A0000","#D4A017","#001F3F","#6F4518","#FF4500","#9400D3",
-#         "#708090","#2E8B57","#8B0000","#FFD700","#556B2F","#DC143C",
-#         "#4682B4","#F4A460","#A9A9A9","#5F9EA0","#FF6347"
-#     ]
-#     max_fcst_val_tmp = None
-#     min_fcst_val_tmp = None
-#     all_times_tmp = []
-#     for i, (init_time_utc, vtimes_local, fvalues) in enumerate(all_forecast_tmp):
-#         temp_values_f = (fvalues - 273.15) * 9/5 + 32
-#         if len(temp_values_f) > 0:
-#             local_min = np.nanmin(temp_values_f)
-#             local_max = np.nanmax(temp_values_f)
-#             if min_fcst_val_tmp is None or local_min < min_fcst_val_tmp:
-#                 min_fcst_val_tmp = local_min
-#             if max_fcst_val_tmp is None or local_max > max_fcst_val_tmp:
-#                 max_fcst_val_tmp = local_max
-#         color = colors_tmp[i % len(colors_tmp)]
-#         init_time_local_str = init_time_utc.astimezone(local_tz).strftime("%m-%d %H:%M %Z")
-#         ax2.plot(
-#             vtimes_local, temp_values_f,
-#             color=color, marker='x', linestyle='-',
-#             label=f'Init {init_time_local_str}'
-#         )
-#         all_times_tmp.extend(vtimes_local)
-#     ax2.axvline(x=now_local, color='black', linestyle=':', label='Now')
-#     if all_times_tmp:
-#         earliest_time = min(all_times_tmp)
-#         latest_time = max(all_times_tmp)
-#         location = LocationInfo(
-#             name="HRRR Location",
-#             region="",
-#             timezone=local_tz_name,
-#             latitude=default_lat,
-#             longitude=default_lon
-#         )
-#         current_date = earliest_time.date()
-#         last_date = latest_time.date()
-#         label_used = False
-#         while current_date <= last_date:
-#             s = sun(location.observer, date=current_date, tzinfo=local_tz)
-#             next_date = current_date + datetime.timedelta(days=1)
-#             s_next = sun(location.observer, date=next_date, tzinfo=local_tz)
-#             today_sunset = s['sunset']
-#             tomorrow_sunrise = s_next['sunrise']
-#             shade_start = max(today_sunset, earliest_time)
-#             shade_end = min(tomorrow_sunrise, latest_time)
-#             if shade_start < shade_end:
-#                 ax2.axvspan(
-#                     shade_start, shade_end,
-#                     facecolor='lightgray', alpha=0.3,
-#                     label='Nighttime' if not label_used else ""
-#                 )
-#                 label_used = True
-#             current_date = next_date
-#     if max_fcst_val_tmp is not None:
-#         ax2.set_ylim(min_fcst_val_tmp - 10, max_fcst_val_tmp + 10)
-#     else:
-#         ax2.set_ylim(0, 100)
-#     ax2.legend(loc='center left', bbox_to_anchor=(1, 0.5))
-#     ax2.grid(True)
-#     fig2.autofmt_xdate(rotation=45)
-#     st.pyplot(fig2)
-#     st.success("HRRR Temperature (F) forecasts (Local Time)!")
+# temp_data_for_plot = []
+# for (init_time_utc, vtimes_local, fvalues) in all_forecast_tmp:
+#     # Convert Kelvin to Fahrenheit
+#     temp_values_f = (fvalues - 273.15) * 9/5 + 32
+#     temp_data_for_plot.append((init_time_utc, vtimes_local, temp_values_f))
+
+# tmp_fig = plot_with_nighttime_shading(
+#     var_name="TMP", unit="°F",
+#     all_data=temp_data_for_plot, now_local=now_local,
+#     local_tz=local_tz, local_tz_name=local_tz_name,
+#     lat=default_lat, lon=default_lon
+# )
+# st.plotly_chart(tmp_fig, use_container_width=True)
+# st.success("HRRR Temperature (F) forecasts (Local Time) with pinch-to-zoom enabled!")
 
 # # -----------------------------
 # # THIRD PLOT: RH (%)
 # # -----------------------------
-# with st.spinner("Plotting HRRR Relative Humidity..."):
-#     fig3, ax3 = plt.subplots(figsize=(10, 5))
-#     ax3.set_title(
-#         f'HRRR {var_rh} (%) Forecasts [Local Time]\nLat={default_lat:.2f}, Lon={default_lon:.2f} | Last 5 Cycles'
-#     )
-#     ax3.set_xlabel('Valid Time (Local)')
-#     ax3.set_ylabel(f'{var_rh} (%)')
-#     colors_rh = [
-#         "#7A0000","#D4A017","#001F3F","#6F4518","#FF4500","#9400D3",
-#         "#708090","#2E8B57","#8B0000","#FFD700","#556B2F","#DC143C",
-#         "#4682B4","#F4A460","#A9A9A9","#5F9EA0","#FF6347"
-#     ]
-#     max_fcst_val_rh = None
-#     all_times_rh = []
-#     for i, (init_time_utc, vtimes_local, fvalues) in enumerate(all_forecast_rh):
-#         rh_values = fvalues
-#         if len(rh_values) > 0:
-#             local_max = np.nanmax(rh_values)
-#             if max_fcst_val_rh is None or local_max > max_fcst_val_rh:
-#                 max_fcst_val_rh = local_max
-#         color = colors_rh[i % len(colors_rh)]
-#         init_time_local_str = init_time_utc.astimezone(local_tz).strftime("%m-%d %H:%M %Z")
-#         ax3.plot(
-#             vtimes_local, rh_values,
-#             color=color, marker='x', linestyle='-',
-#             label=f'Init {init_time_local_str}'
-#         )
-#         all_times_rh.extend(vtimes_local)
-#     ax3.axvline(x=now_local, color='black', linestyle=':', label='Now')
-#     if all_times_rh:
-#         earliest_time = min(all_times_rh)
-#         latest_time = max(all_times_rh)
-#         location = LocationInfo(
-#             name="HRRR Location",
-#             region="",
-#             timezone=local_tz_name,
-#             latitude=default_lat,
-#             longitude=default_lon
-#         )
-#         current_date = earliest_time.date()
-#         last_date = latest_time.date()
-#         label_used = False
-#         while current_date <= last_date:
-#             s = sun(location.observer, date=current_date, tzinfo=local_tz)
-#             next_date = current_date + datetime.timedelta(days=1)
-#             s_next = sun(location.observer, date=next_date, tzinfo=local_tz)
-#             today_sunset = s['sunset']
-#             tomorrow_sunrise = s_next['sunrise']
-#             shade_start = max(today_sunset, earliest_time)
-#             shade_end = min(tomorrow_sunrise, latest_time)
-#             if shade_start < shade_end:
-#                 ax3.axvspan(
-#                     shade_start, shade_end,
-#                     facecolor='lightgray', alpha=0.3,
-#                     label='Nighttime' if not label_used else ""
-#                 )
-#                 label_used = True
-#             current_date = next_date
-#     if max_fcst_val_rh is not None:
-#         ax3.set_ylim(0, min(max_fcst_val_rh + 10, 100))
-#     else:
-#         ax3.set_ylim(0, 100)
-#     ax3.legend(loc='center left', bbox_to_anchor=(1, 0.5))
-#     ax3.grid(True)
-#     fig3.autofmt_xdate(rotation=45)
-#     st.pyplot(fig3)
-#     st.success("HRRR Relative Humidity (%) forecasts (Local Time)!")
+# rh_data_for_plot = []
+# for (init_time_utc, vtimes_local, fvalues) in all_forecast_rh:
+#     rh_data_for_plot.append((init_time_utc, vtimes_local, fvalues))
 
-# # -------------------------------------------
-# # ADDING THE 3-DAY ANALYSIS GIF (DISPLAY ONLY)
-# # -------------------------------------------
-# if st.checkbox("Show 3-Day HRRR Analysis GIF for GUST (00, 06, 12, 18Z)"):
-#     with st.spinner("Generating the HRRR Analysis GIF (Wind Gust)..."):
-#         # Setup S3
-#         s3 = s3fs.S3FileSystem(anon=True)
-#         def lookup(path):
-#             return s3fs.S3Map(path, s3=s3)
-        
-#         utc_tz = pytz.utc
-#         mountain_tz = pytz.timezone("America/Los_Angeles")  # change if needed
-
-#         # 3 most recent complete days
-#         current_mt_time = datetime.datetime.now(mountain_tz)
-#         end_date = (current_mt_time - datetime.timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
-#         start_date = (end_date - datetime.timedelta(days=2))
-
-#         time_steps = ["00", "06", "12", "18"]
-#         vmin, vmax = 0, 70
-#         frames = []
-
-#         current_date_iter = start_date
-#         while current_date_iter <= end_date:
-#             date_str = current_date_iter.strftime("%Y%m%d")
-#             for t in time_steps:
-#                 try:
-#                     # Path to analysis data
-#                     path = f"hrrrzarr/sfc/{date_str}/{date_str}_{t}z_anl.zarr/surface/GUST"
-#                     ds = xr.open_zarr(lookup(path), consolidated=False, chunks={})
-                    
-#                     # If "GUST" not found, try sub-group "surface"
-#                     if 'GUST' not in ds:
-#                         ds = xr.open_zarr(lookup(f"{path}/surface"), consolidated=False, chunks={})
-                    
-#                     ds['GUST_mph'] = ds.GUST * 2.23694
-#                     utc_datetime = utc_tz.localize(datetime.datetime.strptime(f"{date_str} {t}", "%Y%m%d %H"))
-#                     mountain_datetime = utc_datetime.astimezone(mountain_tz)
-#                     mt_time_str = mountain_datetime.strftime("%Y-%m-%d %I:%M %p %Z")
-
-#                     fig, ax = plt.subplots(figsize=(10, 6))
-#                     ds.GUST_mph.plot(ax=ax, vmin=vmin, vmax=vmax, cmap="inferno",
-#                                      cbar_kwargs={"orientation": "horizontal", "pad": 0.1})
-#                     ax.set_title(f"HRRR Wind Gust (MPH) - {date_str} {t}Z ({mt_time_str})", fontsize=12)
-#                     ax.set_xlabel("Longitude")
-#                     ax.set_ylabel("Latitude")
-#                     ax.grid(False)
-
-#                     buf = io.BytesIO()
-#                     plt.savefig(buf, format="png", dpi=300)
-#                     buf.seek(0)
-#                     frame = Image.open(buf).convert("RGB")
-#                     frames.append(frame)
-
-#                     plt.close(fig)
-#                     buf.close()
-#                     ds.close()
-#                     del ds
-#                     gc.collect()
-#                 except Exception as e:
-#                     print(f"Skipping {date_str} {t}Z due to error: {e}")
-#             current_date_iter += datetime.timedelta(days=1)
-
-#         if frames:
-#             gif_bytes = io.BytesIO()
-#             frames[0].save(
-#                 gif_bytes,
-#                 format="GIF",
-#                 append_images=frames[1:],
-#                 save_all=True,
-#                 duration=500,
-#                 loop=0
-#             )
-#             gif_bytes.seek(0)
-#             st.image(gif_bytes, caption="HRRR 3-Day Analysis GIF (Wind Gust)")
-#         else:
-#             st.error("No frames were generated for the 3-Day HRRR Analysis GIF.")
+# rh_fig = plot_with_nighttime_shading(
+#     var_name="RH", unit="%", 
+#     all_data=rh_data_for_plot, now_local=now_local,
+#     local_tz=local_tz, local_tz_name=local_tz_name,
+#     lat=default_lat, lon=default_lon
+# )
+# st.plotly_chart(rh_fig, use_container_width=True)
+# st.success("HRRR Relative Humidity (%) forecasts (Local Time) with pinch-to-zoom enabled!")
 
 import streamlit as st
 import requests
@@ -1945,44 +1436,493 @@ import io
 import gc
 from PIL import Image
 
+# ---------------------------
+# PAGE CONFIG & TITLE
+# ---------------------------
 st.set_page_config(layout="centered")
-st.title("Debugging HRRR Analysis Data in Streamlit")
+st.title("NOAA Weather + HRRR Forecast (Local Time)")
 
-with st.spinner("Checking availability of HRRR analysis data and debugging issues..."):
-    # Step 1: Try listing the S3 folder for a specific date (change the date below if needed)
+# ----------------------------------
+# Default Coordinates (automatically used)
+# ----------------------------------
+default_lat = 40.65
+default_lon = -105.307
+
+# --------------------------
+# 1. NOAA Forecast Retrieval
+# --------------------------
+with st.spinner("Retrieving NOAA forecast..."):
+    base_url = f"https://api.weather.gov/points/{default_lat},{default_lon}"
+    response = requests.get(base_url)
+    if response.status_code == 200:
+        noaa_data = response.json()
+        forecast_url = noaa_data["properties"]["forecast"]
+        forecast_response = requests.get(forecast_url)
+        if forecast_response.status_code == 200:
+            forecast_data = forecast_response.json()
+            forecast_list = []
+            for period in forecast_data["properties"]["periods"]:
+                startTime = period["startTime"]
+                detailedForecast = period["detailedForecast"]
+                start_dt = datetime.datetime.fromisoformat(startTime[:-6])
+                day_of_week = start_dt.strftime("%A")
+                hour = start_dt.hour
+
+                # If forecast time is between 6:00 PM and 11:59 PM, mark as "Overnight"
+                if 18 <= hour <= 23:
+                    display_day = f"{day_of_week} Overnight"
+                else:
+                    display_day = day_of_week
+
+                temperature = period.get('temperature')
+                temperature_unit = period.get('temperatureUnit')
+                wind_speed = period.get('windSpeed')
+                wind_direction = period.get('windDirection')
+                short_forecast = period.get('shortForecast')
+                prob_precip = period.get('probabilityOfPrecipitation', {}).get('value')
+
+                forecast_list.append({
+                    "Day": display_day,
+                    "Date & Time": start_dt.strftime('%B %d, %Y %I:%M %p'),
+                    "Short Forecast": short_forecast,
+                    "Detailed Forecast": detailedForecast,
+                    "Temperature": f"{temperature} {temperature_unit}" if temperature and temperature_unit else "N/A",
+                    "Wind Speed": wind_speed,
+                    "Wind Direction": wind_direction,
+                    "Precipitation Chance (%)": prob_precip if prob_precip is not None else "N/A"
+                })
+
+            forecast_df = pd.DataFrame(forecast_list)
+            columns_order = [
+                "Day", "Date & Time", "Short Forecast", "Detailed Forecast",
+                "Temperature", "Wind Speed", "Wind Direction", "Precipitation Chance (%)"
+            ]
+            forecast_df = forecast_df[columns_order]
+            st.success("NOAA forecast retrieved successfully!")
+
+            for idx, row in forecast_df.iterrows():
+                st.markdown(f"### {row['Day']} - {row['Date & Time']}")
+                st.markdown(f"**Short Forecast:** {row['Short Forecast']}")
+                with st.expander("More Details"):
+                    st.markdown(f"**Detailed Forecast:** {row['Detailed Forecast']}")
+                    st.markdown(f"**Temperature:** {row['Temperature']}")
+                    st.markdown(f"**Wind Speed:** {row['Wind Speed']}")
+                    st.markdown(f"**Wind Direction:** {row['Wind Direction']}")
+                    st.markdown(f"**Precipitation Chance (%):** {row['Precipitation Chance (%)']}")
+        else:
+            st.error(f"Failed to retrieve NOAA forecast. Status {forecast_response.status_code}")
+    else:
+        st.error(f"Failed to retrieve location data from NOAA. Status {response.status_code}")
+
+# --------------------------------------------------
+# 2. HRRR Forecast Retrieval (Last 5 Cycles)
+# --------------------------------------------------
+with st.spinner("Retrieving last 5 HRRR forecast cycles (no analysis)..."):
+    tz_finder = TimezoneFinder()
+    local_tz_name = tz_finder.timezone_at(lng=default_lon, lat=default_lat)
+    if local_tz_name is None:
+        local_tz_name = "UTC"
+    local_tz = pytz.timezone(local_tz_name)
+    now_rounded_utc = datetime.datetime.utcnow().replace(minute=0, second=0, microsecond=0, tzinfo=pytz.utc)
+    now_local = now_rounded_utc.astimezone(local_tz)
+    hour_block = (now_rounded_utc.hour // 6) * 6
+    current_cycle_time_utc = now_rounded_utc.replace(hour=hour_block)
+    cycle_times_utc = [current_cycle_time_utc - datetime.timedelta(hours=6 * i) for i in range(5)]
+    cycle_times_utc.reverse()
+
+    level_surface = 'surface'
+    var_gust = 'GUST'
+    var_temp = 'TMP'
+    level_rh = '2m_above_ground'
+    var_rh = 'RH'
+
     fs = s3fs.S3FileSystem(anon=True)
-    test_date = "20230401"  # <-- Change to any date you'd like to test
-    s3_folder = f"hrrrzarr/sfc/{test_date}"
-    st.write(f"Attempting to list objects in: {s3_folder}")
-    try:
-        listing = fs.ls(s3_folder)
-        st.success(f"S3 listing for {s3_folder}:")
-        st.write(listing)
-    except Exception as e:
-        st.error(f"Could not list {s3_folder}: {e}")
+    chunk_index = xr.open_zarr(s3fs.S3Map("s3://hrrrzarr/grid/HRRR_chunk_index.zarr", s3=fs))
+    projection = ccrs.LambertConformal(
+        central_longitude=262.5,
+        central_latitude=38.5,
+        standard_parallels=(38.5, 38.5),
+        globe=ccrs.Globe(semimajor_axis=6371229, semiminor_axis=6371229)
+    )
+    x, y = projection.transform_point(default_lon, default_lat, ccrs.PlateCarree())
+    nearest_point = chunk_index.sel(x=x, y=y, method="nearest")
+    fcst_chunk_id = f"0.{nearest_point.chunk_id.values}"
 
-    # Step 2: Check if a specific analysis subfolder is there (e.g. 00z_anl.zarr)
-    anl_path = f"hrrrzarr/sfc/{test_date}/{test_date}_00z_anl.zarr"
-    st.write(f"Checking existence of analysis folder: {anl_path}")
-    try:
-        listing_anl = fs.ls(anl_path)
-        st.success(f"Analysis listing for {anl_path}:")
-        st.write(listing_anl)
-    except Exception as e:
-        st.error(f"Could not list {anl_path}: {e}")
+    def retrieve_data(s3_url):
+        with fs.open(s3_url, 'rb') as compressed_data:
+            buffer = ncd.blosc.decompress(compressed_data.read())
+        dtype = "<f4"
+        chunk = np.frombuffer(buffer, dtype=dtype)
+        entry_size = 150 * 150
+        num_entries = len(chunk) // entry_size
+        if num_entries == 1:
+            data_array = np.reshape(chunk, (150, 150))
+        else:
+            data_array = np.reshape(chunk, (num_entries, 150, 150))
+        return data_array
 
-    # Step 3: Attempt to open a dataset and catch full error
-    st.write("Attempting to open GUST from that analysis path...")
-    gust_path = f"{anl_path}/surface/GUST"
-    st.write(f"Dataset path: {gust_path}")
-    try:
-        ds_test = xr.open_zarr(s3fs.S3Map(gust_path, s3=fs), consolidated=False, chunks={})
-        if 'GUST' not in ds_test:
-            ds_test = xr.open_zarr(s3fs.S3Map(f"{gust_path}/surface", s3=fs), consolidated=False, chunks={})
-        st.success("Successfully opened the GUST dataset!")
-        st.write(ds_test)
-        ds_test.close()
-    except Exception as e:
-        st.error(f"Failed to open dataset at {gust_path}: {e}")
+    # -----------------------------
+    # Retrieve GUST
+    # -----------------------------
+    all_forecast_gust = []
+    for init_time_utc in cycle_times_utc:
+        run_date_str = init_time_utc.strftime("%Y%m%d")
+        run_hr_str = init_time_utc.strftime("%H")
+        fcst_url = (
+            f"hrrrzarr/sfc/{run_date_str}/"
+            f"{run_date_str}_{run_hr_str}z_fcst.zarr/{level_surface}/{var_gust}/{level_surface}/{var_gust}/"
+        )
+        try:
+            forecast_data = retrieve_data(fcst_url + fcst_chunk_id)
+        except Exception as e:
+            print(f"Error retrieving GUST for {init_time_utc} -> {e}")
+            continue
+        num_fcst_hours = forecast_data.shape[0]
+        valid_times_utc = [
+            (init_time_utc + datetime.timedelta(hours=i)).replace(tzinfo=pytz.utc)
+            for i in range(num_fcst_hours)
+        ]
+        valid_times_local = [vt.astimezone(local_tz) for vt in valid_times_utc]
+        forecast_values = forecast_data[:, nearest_point.in_chunk_y, nearest_point.in_chunk_x]
+        all_forecast_gust.append((init_time_utc, valid_times_local, forecast_values))
 
-st.success("Debug steps completed. Check logs above for details on what might be missing or failing.")
+    # -----------------------------
+    # Retrieve TMP
+    # -----------------------------
+    all_forecast_tmp = []
+    for init_time_utc in cycle_times_utc:
+        run_date_str = init_time_utc.strftime("%Y%m%d")
+        run_hr_str = init_time_utc.strftime("%H")
+        fcst_url = (
+            f"hrrrzarr/sfc/{run_date_str}/"
+            f"{run_date_str}_{run_hr_str}z_fcst.zarr/{level_surface}/{var_temp}/{level_surface}/{var_temp}/"
+        )
+        try:
+            forecast_data = retrieve_data(fcst_url + fcst_chunk_id)
+        except Exception as e:
+            print(f"Error retrieving TMP for {init_time_utc} -> {e}")
+            continue
+        num_fcst_hours = forecast_data.shape[0]
+        valid_times_utc = [
+            (init_time_utc + datetime.timedelta(hours=i)).replace(tzinfo=pytz.utc)
+            for i in range(num_fcst_hours)
+        ]
+        valid_times_local = [vt.astimezone(local_tz) for vt in valid_times_utc]
+        forecast_values = forecast_data[:, nearest_point.in_chunk_y, nearest_point.in_chunk_x]
+        all_forecast_tmp.append((init_time_utc, valid_times_local, forecast_values))
+
+    # -----------------------------
+    # Retrieve RH
+    # -----------------------------
+    all_forecast_rh = []
+    for init_time_utc in cycle_times_utc:
+        run_date_str = init_time_utc.strftime("%Y%m%d")
+        run_hr_str = init_time_utc.strftime("%H")
+        fcst_url = (
+            f"hrrrzarr/sfc/{run_date_str}/"
+            f"{run_date_str}_{run_hr_str}z_fcst.zarr/{level_rh}/{var_rh}/{level_rh}/{var_rh}/"
+        )
+        try:
+            forecast_data = retrieve_data(fcst_url + fcst_chunk_id)
+        except Exception as e:
+            print(f"Error retrieving RH for {init_time_utc} -> {e}")
+            continue
+        num_fcst_hours = forecast_data.shape[0]
+        valid_times_utc = [
+            (init_time_utc + datetime.timedelta(hours=i)).replace(tzinfo=pytz.utc)
+            for i in range(num_fcst_hours)
+        ]
+        valid_times_local = [vt.astimezone(local_tz) for vt in valid_times_utc]
+        forecast_values = forecast_data[:, nearest_point.in_chunk_y, nearest_point.in_chunk_x]
+        all_forecast_rh.append((init_time_utc, valid_times_local, forecast_values))
+
+# -----------------------------
+# FIRST PLOT: GUST
+# -----------------------------
+fig, ax = plt.subplots(figsize=(10, 5))
+ax.set_title(
+    f'HRRR {var_gust} (mph) Forecasts [Local Time]\nLat={default_lat:.2f}, Lon={default_lon:.2f} | Last 5 Cycles'
+)
+ax.set_xlabel('Valid Time (Local)')
+ax.set_ylabel(f'{var_gust} (mph)')
+colors = [
+    "#7A0000","#D4A017","#001F3F","#6F4518","#FF4500","#9400D3",
+    "#708090","#2E8B57","#8B0000","#FFD700","#556B2F","#DC143C",
+    "#4682B4","#F4A460","#A9A9A9","#5F9EA0","#FF6347"
+]
+conv_factor_mps_to_mph = 2.23694
+max_fcst_val_gust = 0
+all_times = []
+for i, (init_time_utc, vtimes_local, fvalues) in enumerate(all_forecast_gust):
+    fvalues_mph = fvalues * conv_factor_mps_to_mph
+    if len(fvalues_mph) > 0:
+        max_fcst_val_gust = max(max_fcst_val_gust, np.nanmax(fvalues_mph))
+    color = colors[i % len(colors)]
+    init_time_local_str = init_time_utc.astimezone(local_tz).strftime("%m-%d %H:%M %Z")
+    ax.plot(
+        vtimes_local, fvalues_mph,
+        color=color, marker='x', linestyle='-',
+        label=f'Init {init_time_local_str}'
+    )
+    all_times.extend(vtimes_local)
+ax.axvline(x=now_local, color='black', linestyle=':', label='Now')
+if all_times:
+    earliest_time = min(all_times)
+    latest_time = max(all_times)
+    location = LocationInfo(
+        name="HRRR Location",
+        region="",
+        timezone=local_tz_name,
+        latitude=default_lat,
+        longitude=default_lon
+    )
+    current_date = earliest_time.date()
+    last_date = latest_time.date()
+    label_used = False
+    while current_date <= last_date:
+        s = sun(location.observer, date=current_date, tzinfo=local_tz)
+        next_date = current_date + datetime.timedelta(days=1)
+        s_next = sun(location.observer, date=next_date, tzinfo=local_tz)
+        today_sunset = s['sunset']
+        tomorrow_sunrise = s_next['sunrise']
+        shade_start = max(today_sunset, earliest_time)
+        shade_end = min(tomorrow_sunrise, latest_time)
+        if shade_start < shade_end:
+            ax.axvspan(
+                shade_start, shade_end,
+                facecolor='lightgray', alpha=0.3,
+                label='Nighttime' if not label_used else ""
+            )
+            label_used = True
+        current_date = next_date
+ax.set_ylim(0, max_fcst_val_gust + 5 if max_fcst_val_gust else 10)
+ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+ax.grid(True)
+fig.autofmt_xdate(rotation=45)
+st.pyplot(fig)
+st.success("HRRR GUST forecasts (Local Time)!")
+
+# -----------------------------
+# SECOND PLOT: TMP (Fahrenheit)
+# -----------------------------
+with st.spinner("Plotting HRRR temperature..."):
+    fig2, ax2 = plt.subplots(figsize=(10, 5))
+    ax2.set_title(
+        f'HRRR {var_temp} (°F) Forecasts [Local Time]\nLat={default_lat:.2f}, Lon={default_lon:.2f} | Last 5 Cycles'
+    )
+    ax2.set_xlabel('Valid Time (Local)')
+    ax2.set_ylabel(f'{var_temp} (°F)')
+    colors_tmp = [
+        "#7A0000","#D4A017","#001F3F","#6F4518","#FF4500","#9400D3",
+        "#708090","#2E8B57","#8B0000","#FFD700","#556B2F","#DC143C",
+        "#4682B4","#F4A460","#A9A9A9","#5F9EA0","#FF6347"
+    ]
+    max_fcst_val_tmp = None
+    min_fcst_val_tmp = None
+    all_times_tmp = []
+    for i, (init_time_utc, vtimes_local, fvalues) in enumerate(all_forecast_tmp):
+        temp_values_f = (fvalues - 273.15) * 9/5 + 32
+        if len(temp_values_f) > 0:
+            local_min = np.nanmin(temp_values_f)
+            local_max = np.nanmax(temp_values_f)
+            if min_fcst_val_tmp is None or local_min < min_fcst_val_tmp:
+                min_fcst_val_tmp = local_min
+            if max_fcst_val_tmp is None or local_max > max_fcst_val_tmp:
+                max_fcst_val_tmp = local_max
+        color = colors_tmp[i % len(colors_tmp)]
+        init_time_local_str = init_time_utc.astimezone(local_tz).strftime("%m-%d %H:%M %Z")
+        ax2.plot(
+            vtimes_local, temp_values_f,
+            color=color, marker='x', linestyle='-',
+            label=f'Init {init_time_local_str}'
+        )
+        all_times_tmp.extend(vtimes_local)
+    ax2.axvline(x=now_local, color='black', linestyle=':', label='Now')
+    if all_times_tmp:
+        earliest_time = min(all_times_tmp)
+        latest_time = max(all_times_tmp)
+        location = LocationInfo(
+            name="HRRR Location",
+            region="",
+            timezone=local_tz_name,
+            latitude=default_lat,
+            longitude=default_lon
+        )
+        current_date = earliest_time.date()
+        last_date = latest_time.date()
+        label_used = False
+        while current_date <= last_date:
+            s = sun(location.observer, date=current_date, tzinfo=local_tz)
+            next_date = current_date + datetime.timedelta(days=1)
+            s_next = sun(location.observer, date=next_date, tzinfo=local_tz)
+            today_sunset = s['sunset']
+            tomorrow_sunrise = s_next['sunrise']
+            shade_start = max(today_sunset, earliest_time)
+            shade_end = min(tomorrow_sunrise, latest_time)
+            if shade_start < shade_end:
+                ax2.axvspan(
+                    shade_start, shade_end,
+                    facecolor='lightgray', alpha=0.3,
+                    label='Nighttime' if not label_used else ""
+                )
+                label_used = True
+            current_date = next_date
+    if max_fcst_val_tmp is not None:
+        ax2.set_ylim(min_fcst_val_tmp - 10, max_fcst_val_tmp + 10)
+    else:
+        ax2.set_ylim(0, 100)
+    ax2.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+    ax2.grid(True)
+    fig2.autofmt_xdate(rotation=45)
+    st.pyplot(fig2)
+    st.success("HRRR Temperature (F) forecasts (Local Time)!")
+
+# -----------------------------
+# THIRD PLOT: RH (%)
+# -----------------------------
+with st.spinner("Plotting HRRR Relative Humidity..."):
+    fig3, ax3 = plt.subplots(figsize=(10, 5))
+    ax3.set_title(
+        f'HRRR {var_rh} (%) Forecasts [Local Time]\nLat={default_lat:.2f}, Lon={default_lon:.2f} | Last 5 Cycles'
+    )
+    ax3.set_xlabel('Valid Time (Local)')
+    ax3.set_ylabel(f'{var_rh} (%)')
+    colors_rh = [
+        "#7A0000","#D4A017","#001F3F","#6F4518","#FF4500","#9400D3",
+        "#708090","#2E8B57","#8B0000","#FFD700","#556B2F","#DC143C",
+        "#4682B4","#F4A460","#A9A9A9","#5F9EA0","#FF6347"
+    ]
+    max_fcst_val_rh = None
+    all_times_rh = []
+    for i, (init_time_utc, vtimes_local, fvalues) in enumerate(all_forecast_rh):
+        rh_values = fvalues
+        if len(rh_values) > 0:
+            local_max = np.nanmax(rh_values)
+            if max_fcst_val_rh is None or local_max > max_fcst_val_rh:
+                max_fcst_val_rh = local_max
+        color = colors_rh[i % len(colors_rh)]
+        init_time_local_str = init_time_utc.astimezone(local_tz).strftime("%m-%d %H:%M %Z")
+        ax3.plot(
+            vtimes_local, rh_values,
+            color=color, marker='x', linestyle='-',
+            label=f'Init {init_time_local_str}'
+        )
+        all_times_rh.extend(vtimes_local)
+    ax3.axvline(x=now_local, color='black', linestyle=':', label='Now')
+    if all_times_rh:
+        earliest_time = min(all_times_rh)
+        latest_time = max(all_times_rh)
+        location = LocationInfo(
+            name="HRRR Location",
+            region="",
+            timezone=local_tz_name,
+            latitude=default_lat,
+            longitude=default_lon
+        )
+        current_date = earliest_time.date()
+        last_date = latest_time.date()
+        label_used = False
+        while current_date <= last_date:
+            s = sun(location.observer, date=current_date, tzinfo=local_tz)
+            next_date = current_date + datetime.timedelta(days=1)
+            s_next = sun(location.observer, date=next_date, tzinfo=local_tz)
+            today_sunset = s['sunset']
+            tomorrow_sunrise = s_next['sunrise']
+            shade_start = max(today_sunset, earliest_time)
+            shade_end = min(tomorrow_sunrise, latest_time)
+            if shade_start < shade_end:
+                ax3.axvspan(
+                    shade_start, shade_end,
+                    facecolor='lightgray', alpha=0.3,
+                    label='Nighttime' if not label_used else ""
+                )
+                label_used = True
+            current_date = next_date
+    if max_fcst_val_rh is not None:
+        ax3.set_ylim(0, min(max_fcst_val_rh + 10, 100))
+    else:
+        ax3.set_ylim(0, 100)
+    ax3.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+    ax3.grid(True)
+    fig3.autofmt_xdate(rotation=45)
+    st.pyplot(fig3)
+    st.success("HRRR Relative Humidity (%) forecasts (Local Time)!")
+
+# -------------------------------------------
+# ADDING THE 3-DAY ANALYSIS GIF (DISPLAY ONLY)
+# -------------------------------------------
+if st.checkbox("Show 3-Day HRRR Analysis GIF for GUST (00, 06, 12, 18Z)"):
+    with st.spinner("Generating the HRRR Analysis GIF (Wind Gust)..."):
+        # Setup S3
+        s3 = s3fs.S3FileSystem(anon=True)
+        def lookup(path):
+            return s3fs.S3Map(path, s3=s3)
+        
+        utc_tz = pytz.utc
+        mountain_tz = pytz.timezone("America/Los_Angeles")  # change if needed
+
+        # 3 most recent complete days
+        current_mt_time = datetime.datetime.now(mountain_tz)
+        end_date = (current_mt_time - datetime.timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+        start_date = (end_date - datetime.timedelta(days=2))
+
+        time_steps = ["00", "06", "12", "18"]
+        vmin, vmax = 0, 70
+        frames = []
+
+        current_date_iter = start_date
+        while current_date_iter <= end_date:
+            date_str = current_date_iter.strftime("%Y%m%d")
+            for t in time_steps:
+                try:
+                    # Path to analysis data
+                    path = f"hrrrzarr/sfc/{date_str}/{date_str}_{t}z_anl.zarr/surface/GUST"
+                    ds = xr.open_zarr(lookup(path), consolidated=False, chunks={})
+                    
+                    # If "GUST" not found, try sub-group "surface"
+                    if 'GUST' not in ds:
+                        ds = xr.open_zarr(lookup(f"{path}/surface"), consolidated=False, chunks={})
+                    
+                    ds['GUST_mph'] = ds.GUST * 2.23694
+                    utc_datetime = utc_tz.localize(datetime.datetime.strptime(f"{date_str} {t}", "%Y%m%d %H"))
+                    mountain_datetime = utc_datetime.astimezone(mountain_tz)
+                    mt_time_str = mountain_datetime.strftime("%Y-%m-%d %I:%M %p %Z")
+
+                    fig, ax = plt.subplots(figsize=(10, 6))
+                    ds.GUST_mph.plot(ax=ax, vmin=vmin, vmax=vmax, cmap="inferno",
+                                     cbar_kwargs={"orientation": "horizontal", "pad": 0.1})
+                    ax.set_title(f"HRRR Wind Gust (MPH) - {date_str} {t}Z ({mt_time_str})", fontsize=12)
+                    ax.set_xlabel("Longitude")
+                    ax.set_ylabel("Latitude")
+                    ax.grid(False)
+
+                    buf = io.BytesIO()
+                    plt.savefig(buf, format="png", dpi=300)
+                    buf.seek(0)
+                    frame = Image.open(buf).convert("RGB")
+                    frames.append(frame)
+
+                    plt.close(fig)
+                    buf.close()
+                    ds.close()
+                    del ds
+                    gc.collect()
+                except Exception as e:
+                    print(f"Skipping {date_str} {t}Z due to error: {e}")
+            current_date_iter += datetime.timedelta(days=1)
+
+        if frames:
+            gif_bytes = io.BytesIO()
+            frames[0].save(
+                gif_bytes,
+                format="GIF",
+                append_images=frames[1:],
+                save_all=True,
+                duration=500,
+                loop=0
+            )
+            gif_bytes.seek(0)
+            st.image(gif_bytes, caption="HRRR 3-Day Analysis GIF (Wind Gust)")
+        else:
+            st.error("No frames were generated for the 3-Day HRRR Analysis GIF.")
+
