@@ -1129,8 +1129,12 @@ import io
 from datetime import datetime, timedelta
 import pytz
 from PIL import Image
-import imageio
 import numpy as np
+try:
+    import imageio
+except ModuleNotFoundError:
+    st.error("Module imageio is not installed. Please add imageio to your requirements.txt and redeploy.")
+    raise
 
 # -----------------------------
 # SETUP
@@ -1202,9 +1206,10 @@ if st.button("Generate HRRR Wind Gust Video"):
             current_date_iter += timedelta(days=1)
     
     if frames_list:
+        # Sort frames by timestamp
         frames_list.sort(key=lambda x: x[0])
         frames = [np.array(frame) for _, frame in frames_list]
-        # Create an mp4 video from the frames; mimwrite returns bytes when uri is None.
+        # Create an MP4 video from the frames (fps=2 means each frame displays for 0.5 seconds)
         video_bytes = imageio.mimwrite(uri=None, ims=frames, fps=2, format='mp4')
         st.video(video_bytes)
         st.success("Video generated successfully!")
