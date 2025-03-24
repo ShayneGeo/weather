@@ -1024,101 +1024,6 @@
 
 
 
-# import streamlit as st
-# import s3fs
-# import xarray as xr
-# import matplotlib.pyplot as plt
-# import os
-# import gc
-# import io
-# from datetime import datetime, timedelta
-# import pytz
-# from PIL import Image
-# import base64
-
-# # -----------------------------
-# # SETUP
-# # -----------------------------
-# s3 = s3fs.S3FileSystem(anon=True)
-# def lookup(path):
-#     return s3fs.S3Map(path, s3=s3)
-
-# utc_tz = pytz.utc
-# mountain_tz = pytz.timezone("America/Los_Angeles")  # Change as needed
-
-# # Get current time in UTC
-# now_utc = datetime.now(utc_tz)
-# # HRRR analysis runs are available at 00, 06, 12, and 18 UTC.
-# # Calculate the most recent run hour (rounding down to the nearest multiple of 6)
-# most_recent_run_hour = (now_utc.hour // 6) * 6
-# # Create the most recent run time in UTC
-# most_recent_run_utc = now_utc.replace(hour=most_recent_run_hour, minute=0, second=0, microsecond=0)
-# # Set end_date to the most recent HRRR run time in Mountain Time
-# end_date = most_recent_run_utc.astimezone(mountain_tz)
-# # Process data for the day prior to the most recent run day as well
-# start_date = end_date - timedelta(days=1)
-
-# time_steps = ["00", "06", "12", "18"]
-# vmin, vmax = 0, 70
-
-# # -----------------------------
-# # BUTTON TO GENERATE AND DISPLAY GIF
-# # -----------------------------
-# if st.button("Generate HRRR Wind Gust GIF"):
-#     frames = []
-#     with st.spinner("Generating GIF..."):
-#         current_date_iter = start_date
-#         while current_date_iter <= end_date:
-#             date_str = current_date_iter.strftime("%Y%m%d")
-#             for time in time_steps:
-#                 st.write(f"Processing: {date_str} {time}Z")
-#                 path = f"hrrrzarr/sfc/{date_str}/{date_str}_{time}z_anl.zarr/surface/GUST"
-#                 try:
-#                     ds = xr.open_zarr(lookup(path), consolidated=False)
-#                     if 'GUST' not in ds:
-#                         ds = xr.open_zarr(lookup(f"{path}/surface"), consolidated=False)
-#                     ds['GUST_mph'] = ds.GUST * 2.23694
-#                     utc_datetime = datetime.strptime(f"{date_str} {time}", "%Y%m%d %H")
-#                     utc_datetime = utc_tz.localize(utc_datetime)
-#                     mountain_datetime = utc_datetime.astimezone(mountain_tz)
-#                     mt_time_str = mountain_datetime.strftime("%Y-%m-%d %I:%M %p %Z")
-                    
-#                     fig, ax = plt.subplots(figsize=(10, 6))
-#                     ds.GUST_mph.plot(ax=ax, vmin=vmin, vmax=vmax, cmap="inferno",
-#                                      cbar_kwargs={"orientation": "horizontal", "pad": 0.1})
-#                     ax.set_title(f"HRRR Wind Gust (MPH) - {date_str} {time}Z ({mt_time_str})", fontsize=12)
-#                     ax.set_xlabel("Longitude")
-#                     ax.set_ylabel("Latitude")
-#                     ax.grid(False)
-                    
-#                     buf = io.BytesIO()
-#                     plt.savefig(buf, format="png", dpi=300)
-#                     buf.seek(0)
-#                     frame = Image.open(buf).convert("RGB")
-#                     frames.append(frame)
-                    
-#                     plt.close(fig)
-#                     buf.close()
-#                     ds.close()
-#                     del ds
-#                     gc.collect()
-#                 except Exception as e:
-#                     st.write(f"Skipping {date_str} {time}Z due to error: {e}")
-#             current_date_iter += timedelta(days=1)
-#         if frames:
-#             gif_buffer = io.BytesIO()
-#             frames[0].save(gif_buffer, format="GIF", append_images=frames[1:], save_all=True,
-#                            duration=500, loop=0)
-#             gif_buffer.seek(0)
-#             # Encode the GIF to base64 so it animates in the app
-#             gif_base64 = base64.b64encode(gif_buffer.getvalue()).decode("utf-8")
-#             gif_html = f'<img src="data:image/gif;base64,{gif_base64}" alt="HRRR Wind Gust GIF" style="width:100%;">'
-#             st.markdown(gif_html, unsafe_allow_html=True)
-#             st.success("GIF generated successfully!")
-#         else:
-#             st.error("No frames were generated. GIF not created.")
-
-
 import streamlit as st
 import s3fs
 import xarray as xr
@@ -1129,12 +1034,7 @@ import io
 from datetime import datetime, timedelta
 import pytz
 from PIL import Image
-import numpy as np
-try:
-    import imageio
-except ModuleNotFoundError:
-    st.error("Module imageio is not installed. Please add imageio to your requirements.txt and redeploy.")
-    raise
+import base64
 
 # -----------------------------
 # SETUP
@@ -1162,11 +1062,11 @@ time_steps = ["00", "06", "12", "18"]
 vmin, vmax = 0, 70
 
 # -----------------------------
-# BUTTON TO GENERATE AND DISPLAY VIDEO
+# BUTTON TO GENERATE AND DISPLAY GIF
 # -----------------------------
-if st.button("Generate HRRR Wind Gust Video"):
-    frames_list = []  # List to store tuples of (timestamp, image frame)
-    with st.spinner("Generating frames..."):
+if st.button("Generate HRRR Wind Gust GIF"):
+    frames = []
+    with st.spinner("Generating GIF..."):
         current_date_iter = start_date
         while current_date_iter <= end_date:
             date_str = current_date_iter.strftime("%Y%m%d")
@@ -1181,11 +1081,12 @@ if st.button("Generate HRRR Wind Gust Video"):
                     utc_datetime = datetime.strptime(f"{date_str} {time}", "%Y%m%d %H")
                     utc_datetime = utc_tz.localize(utc_datetime)
                     mountain_datetime = utc_datetime.astimezone(mountain_tz)
+                    mt_time_str = mountain_datetime.strftime("%Y-%m-%d %I:%M %p %Z")
                     
                     fig, ax = plt.subplots(figsize=(10, 6))
                     ds.GUST_mph.plot(ax=ax, vmin=vmin, vmax=vmax, cmap="inferno",
                                      cbar_kwargs={"orientation": "horizontal", "pad": 0.1})
-                    ax.set_title(f"HRRR Wind Gust (MPH) - {mountain_datetime.strftime('%Y-%m-%d %I:%M %p %Z')}", fontsize=12)
+                    ax.set_title(f"HRRR Wind Gust (MPH) - {date_str} {time}Z ({mt_time_str})", fontsize=12)
                     ax.set_xlabel("Longitude")
                     ax.set_ylabel("Latitude")
                     ax.grid(False)
@@ -1194,7 +1095,7 @@ if st.button("Generate HRRR Wind Gust Video"):
                     plt.savefig(buf, format="png", dpi=300)
                     buf.seek(0)
                     frame = Image.open(buf).convert("RGB")
-                    frames_list.append((mountain_datetime, frame))
+                    frames.append(frame)
                     
                     plt.close(fig)
                     buf.close()
@@ -1204,15 +1105,18 @@ if st.button("Generate HRRR Wind Gust Video"):
                 except Exception as e:
                     st.write(f"Skipping {date_str} {time}Z due to error: {e}")
             current_date_iter += timedelta(days=1)
-    
-    if frames_list:
-        # Sort frames by timestamp
-        frames_list.sort(key=lambda x: x[0])
-        frames = [np.array(frame) for _, frame in frames_list]
-        # Create an MP4 video from the frames (fps=2 means each frame displays for 0.5 seconds)
-        video_bytes = imageio.mimwrite(uri=None, ims=frames, fps=2, format='mp4')
-        st.video(video_bytes)
-        st.success("Video generated successfully!")
-    else:
-        st.error("No frames were generated. Video not created.")
+        if frames:
+            gif_buffer = io.BytesIO()
+            frames[0].save(gif_buffer, format="GIF", append_images=frames[1:], save_all=True,
+                           duration=500, loop=0)
+            gif_buffer.seek(0)
+            # Encode the GIF to base64 so it animates in the app
+            gif_base64 = base64.b64encode(gif_buffer.getvalue()).decode("utf-8")
+            gif_html = f'<img src="data:image/gif;base64,{gif_base64}" alt="HRRR Wind Gust GIF" style="width:100%;">'
+            st.markdown(gif_html, unsafe_allow_html=True)
+            st.success("GIF generated successfully!")
+        else:
+            st.error("No frames were generated. GIF not created.")
+
+
 
