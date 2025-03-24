@@ -19,3 +19,4 @@ fsspec==2024.10.0
 numcodecs==0.13.1
 rasterio
 plotly
+imageio
