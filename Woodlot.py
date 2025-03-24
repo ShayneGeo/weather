@@ -1022,6 +1022,8 @@
 
 
 
+
+
 # import streamlit as st
 # import s3fs
 # import xarray as xr
@@ -1044,8 +1046,16 @@
 # utc_tz = pytz.utc
 # mountain_tz = pytz.timezone("America/Los_Angeles")  # Change as needed
 
-# current_mt_time = datetime.now(mountain_tz)
-# end_date = (current_mt_time - timedelta(days=0)).replace(hour=0, minute=0, second=0, microsecond=0)
+# # Get current time in UTC
+# now_utc = datetime.now(utc_tz)
+# # HRRR analysis runs are available at 00, 06, 12, and 18 UTC.
+# # Calculate the most recent run hour (rounding down to the nearest multiple of 6)
+# most_recent_run_hour = (now_utc.hour // 6) * 6
+# # Create the most recent run time in UTC
+# most_recent_run_utc = now_utc.replace(hour=most_recent_run_hour, minute=0, second=0, microsecond=0)
+# # Set end_date to the most recent HRRR run time in Mountain Time
+# end_date = most_recent_run_utc.astimezone(mountain_tz)
+# # Process data for the day prior to the most recent run day as well
 # start_date = end_date - timedelta(days=1)
 
 # time_steps = ["00", "06", "12", "18"]
@@ -1147,11 +1157,11 @@ time_steps = ["00", "06", "12", "18"]
 vmin, vmax = 0, 70
 
 # -----------------------------
-# BUTTON TO GENERATE AND DISPLAY GIF
+# BUTTON TO GENERATE AND DISPLAY FRAME SLIDER
 # -----------------------------
-if st.button("Generate HRRR Wind Gust GIF"):
-    frames = []
-    with st.spinner("Generating GIF..."):
+if st.button("Generate HRRR Wind Gust Frames"):
+    frames_list = []  # List to store tuples of (timestamp, image frame)
+    with st.spinner("Generating frames..."):
         current_date_iter = start_date
         while current_date_iter <= end_date:
             date_str = current_date_iter.strftime("%Y%m%d")
@@ -1171,7 +1181,7 @@ if st.button("Generate HRRR Wind Gust GIF"):
                     fig, ax = plt.subplots(figsize=(10, 6))
                     ds.GUST_mph.plot(ax=ax, vmin=vmin, vmax=vmax, cmap="inferno",
                                      cbar_kwargs={"orientation": "horizontal", "pad": 0.1})
-                    ax.set_title(f"HRRR Wind Gust (MPH) - {date_str} {time}Z ({mt_time_str})", fontsize=12)
+                    ax.set_title(f"HRRR Wind Gust (MPH) - {mt_time_str}", fontsize=12)
                     ax.set_xlabel("Longitude")
                     ax.set_ylabel("Latitude")
                     ax.grid(False)
@@ -1180,7 +1190,8 @@ if st.button("Generate HRRR Wind Gust GIF"):
                     plt.savefig(buf, format="png", dpi=300)
                     buf.seek(0)
                     frame = Image.open(buf).convert("RGB")
-                    frames.append(frame)
+                    
+                    frames_list.append((mountain_datetime, frame))
                     
                     plt.close(fig)
                     buf.close()
@@ -1190,18 +1201,22 @@ if st.button("Generate HRRR Wind Gust GIF"):
                 except Exception as e:
                     st.write(f"Skipping {date_str} {time}Z due to error: {e}")
             current_date_iter += timedelta(days=1)
-        if frames:
-            gif_buffer = io.BytesIO()
-            frames[0].save(gif_buffer, format="GIF", append_images=frames[1:], save_all=True,
-                           duration=500, loop=0)
-            gif_buffer.seek(0)
-            # Encode the GIF to base64 so it animates in the app
-            gif_base64 = base64.b64encode(gif_buffer.getvalue()).decode("utf-8")
-            gif_html = f'<img src="data:image/gif;base64,{gif_base64}" alt="HRRR Wind Gust GIF" style="width:100%;">'
-            st.markdown(gif_html, unsafe_allow_html=True)
-            st.success("GIF generated successfully!")
-        else:
-            st.error("No frames were generated. GIF not created.")
-
-
+    
+    if frames_list:
+        # Sort frames by timestamp
+        frames_list.sort(key=lambda x: x[0])
+        # Build a list of formatted time strings for the slider options
+        time_options = [dt.strftime("%Y-%m-%d %I:%M %p %Z") for dt, _ in frames_list]
+        selected_time_str = st.select_slider("Select Forecast Time", options=time_options, value=time_options[-1])
+        # Retrieve the corresponding frame
+        selected_frame = None
+        for dt, frame in frames_list:
+            if dt.strftime("%Y-%m-%d %I:%M %p %Z") == selected_time_str:
+                selected_frame = frame
+                break
+        if selected_frame:
+            st.image(selected_frame, caption=f"Forecast at {selected_time_str}", use_column_width=True)
+        st.success("Frames generated successfully!")
+    else:
+        st.error("No frames were generated.")
 
