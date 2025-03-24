@@ -1024,6 +1024,101 @@ with st.spinner("Plotting HRRR Relative Humidity..."):
 
 
 
+# import streamlit as st
+# import s3fs
+# import xarray as xr
+# import matplotlib.pyplot as plt
+# import os
+# import gc
+# import io
+# from datetime import datetime, timedelta
+# import pytz
+# from PIL import Image
+# import base64
+
+# # -----------------------------
+# # SETUP
+# # -----------------------------
+# s3 = s3fs.S3FileSystem(anon=True)
+# def lookup(path):
+#     return s3fs.S3Map(path, s3=s3)
+
+# utc_tz = pytz.utc
+# mountain_tz = pytz.timezone("America/Los_Angeles")  # Change as needed
+
+# # Get current time in UTC
+# now_utc = datetime.now(utc_tz)
+# # HRRR analysis runs are available at 00, 06, 12, and 18 UTC.
+# # Calculate the most recent run hour (rounding down to the nearest multiple of 6)
+# most_recent_run_hour = (now_utc.hour // 6) * 6
+# # Create the most recent run time in UTC
+# most_recent_run_utc = now_utc.replace(hour=most_recent_run_hour, minute=0, second=0, microsecond=0)
+# # Set end_date to the most recent HRRR run time in Mountain Time
+# end_date = most_recent_run_utc.astimezone(mountain_tz)
+# # Process data for the day prior to the most recent run day as well
+# start_date = end_date - timedelta(days=0)
+
+# time_steps = ["00", "06", "12", "18"]
+# vmin, vmax = 0, 70
+
+# # -----------------------------
+# # BUTTON TO GENERATE AND DISPLAY GIF
+# # -----------------------------
+# if st.button("Generate HRRR Wind Gust GIF"):
+#     frames = []
+#     with st.spinner("Generating GIF..."):
+#         current_date_iter = start_date
+#         while current_date_iter <= end_date:
+#             date_str = current_date_iter.strftime("%Y%m%d")
+#             for time in time_steps:
+#                 st.write(f"Processing: {date_str} {time}Z")
+#                 path = f"hrrrzarr/sfc/{date_str}/{date_str}_{time}z_anl.zarr/surface/GUST"
+#                 try:
+#                     ds = xr.open_zarr(lookup(path), consolidated=False)
+#                     if 'GUST' not in ds:
+#                         ds = xr.open_zarr(lookup(f"{path}/surface"), consolidated=False)
+#                     ds['GUST_mph'] = ds.GUST * 2.23694
+#                     utc_datetime = datetime.strptime(f"{date_str} {time}", "%Y%m%d %H")
+#                     utc_datetime = utc_tz.localize(utc_datetime)
+#                     mountain_datetime = utc_datetime.astimezone(mountain_tz)
+#                     mt_time_str = mountain_datetime.strftime("%Y-%m-%d %I:%M %p %Z")
+                    
+#                     fig, ax = plt.subplots(figsize=(10, 6))
+#                     ds.GUST_mph.plot(ax=ax, vmin=vmin, vmax=vmax, cmap="inferno",
+#                                      cbar_kwargs={"orientation": "horizontal", "pad": 0.1})
+#                     ax.set_title(f"HRRR Wind Gust (MPH) - {date_str} {time}Z ({mt_time_str})", fontsize=12)
+#                     ax.set_xlabel("Longitude")
+#                     ax.set_ylabel("Latitude")
+#                     ax.grid(False)
+                    
+#                     buf = io.BytesIO()
+#                     plt.savefig(buf, format="png", dpi=300)
+#                     buf.seek(0)
+#                     frame = Image.open(buf).convert("RGB")
+#                     frames.append(frame)
+                    
+#                     plt.close(fig)
+#                     buf.close()
+#                     ds.close()
+#                     del ds
+#                     gc.collect()
+#                 except Exception as e:
+#                     st.write(f"Skipping {date_str} {time}Z due to error: {e}")
+#             current_date_iter += timedelta(days=1)
+#         if frames:
+#             gif_buffer = io.BytesIO()
+#             frames[0].save(gif_buffer, format="GIF", append_images=frames[1:], save_all=True,
+#                            duration=500, loop=0)
+#             gif_buffer.seek(0)
+#             # Encode the GIF to base64 so it animates in the app
+#             gif_base64 = base64.b64encode(gif_buffer.getvalue()).decode("utf-8")
+#             gif_html = f'<img src="data:image/gif;base64,{gif_base64}" alt="HRRR Wind Gust GIF" style="width:100%;">'
+#             st.markdown(gif_html, unsafe_allow_html=True)
+#             st.success("GIF generated successfully!")
+#         else:
+#             st.error("No frames were generated. GIF not created.")
+
+
 import streamlit as st
 import s3fs
 import xarray as xr
@@ -1035,6 +1130,7 @@ from datetime import datetime, timedelta
 import pytz
 from PIL import Image
 import base64
+import numpy as np
 
 # -----------------------------
 # SETUP
@@ -1048,75 +1144,105 @@ mountain_tz = pytz.timezone("America/Los_Angeles")  # Change as needed
 
 # Get current time in UTC
 now_utc = datetime.now(utc_tz)
-# HRRR analysis runs are available at 00, 06, 12, and 18 UTC.
+# HRRR forecast runs are available at 00, 06, 12, and 18 UTC.
 # Calculate the most recent run hour (rounding down to the nearest multiple of 6)
 most_recent_run_hour = (now_utc.hour // 6) * 6
 # Create the most recent run time in UTC
 most_recent_run_utc = now_utc.replace(hour=most_recent_run_hour, minute=0, second=0, microsecond=0)
-# Set end_date to the most recent HRRR run time in Mountain Time
-end_date = most_recent_run_utc.astimezone(mountain_tz)
-# Process data for the day prior to the most recent run day as well
-start_date = end_date - timedelta(days=0)
+# Convert to Mountain Time for referencing/logging
+most_recent_run_mt = most_recent_run_utc.astimezone(mountain_tz)
 
-time_steps = ["00", "06", "12", "18"]
+# We'll generate a forecast animation from the most recent run for the first 18 hours
+# (You can adjust the range as needed)
+forecast_hours = range(0, 19)  # 0 through 18
 vmin, vmax = 0, 70
 
 # -----------------------------
-# BUTTON TO GENERATE AND DISPLAY GIF
+# AUTOMATICALLY GENERATE AND DISPLAY FORECAST GIF
 # -----------------------------
-if st.button("Generate HRRR Wind Gust GIF"):
-    frames = []
-    with st.spinner("Generating GIF..."):
-        current_date_iter = start_date
-        while current_date_iter <= end_date:
-            date_str = current_date_iter.strftime("%Y%m%d")
-            for time in time_steps:
-                st.write(f"Processing: {date_str} {time}Z")
-                path = f"hrrrzarr/sfc/{date_str}/{date_str}_{time}z_anl.zarr/surface/GUST"
-                try:
-                    ds = xr.open_zarr(lookup(path), consolidated=False)
-                    if 'GUST' not in ds:
-                        ds = xr.open_zarr(lookup(f"{path}/surface"), consolidated=False)
-                    ds['GUST_mph'] = ds.GUST * 2.23694
-                    utc_datetime = datetime.strptime(f"{date_str} {time}", "%Y%m%d %H")
-                    utc_datetime = utc_tz.localize(utc_datetime)
-                    mountain_datetime = utc_datetime.astimezone(mountain_tz)
-                    mt_time_str = mountain_datetime.strftime("%Y-%m-%d %I:%M %p %Z")
-                    
-                    fig, ax = plt.subplots(figsize=(10, 6))
-                    ds.GUST_mph.plot(ax=ax, vmin=vmin, vmax=vmax, cmap="inferno",
-                                     cbar_kwargs={"orientation": "horizontal", "pad": 0.1})
-                    ax.set_title(f"HRRR Wind Gust (MPH) - {date_str} {time}Z ({mt_time_str})", fontsize=12)
-                    ax.set_xlabel("Longitude")
-                    ax.set_ylabel("Latitude")
-                    ax.grid(False)
-                    
-                    buf = io.BytesIO()
-                    plt.savefig(buf, format="png", dpi=300)
-                    buf.seek(0)
-                    frame = Image.open(buf).convert("RGB")
-                    frames.append(frame)
-                    
-                    plt.close(fig)
-                    buf.close()
-                    ds.close()
-                    del ds
-                    gc.collect()
-                except Exception as e:
-                    st.write(f"Skipping {date_str} {time}Z due to error: {e}")
-            current_date_iter += timedelta(days=1)
-        if frames:
-            gif_buffer = io.BytesIO()
-            frames[0].save(gif_buffer, format="GIF", append_images=frames[1:], save_all=True,
-                           duration=500, loop=0)
-            gif_buffer.seek(0)
-            # Encode the GIF to base64 so it animates in the app
-            gif_base64 = base64.b64encode(gif_buffer.getvalue()).decode("utf-8")
-            gif_html = f'<img src="data:image/gif;base64,{gif_base64}" alt="HRRR Wind Gust GIF" style="width:100%;">'
-            st.markdown(gif_html, unsafe_allow_html=True)
-            st.success("GIF generated successfully!")
-        else:
-            st.error("No frames were generated. GIF not created.")
+st.title("HRRR Wind Gust Forecast GIF")
 
+# You can optionally show the run time in the app
+st.write(f"Most recent HRRR run (Mountain Time): {most_recent_run_mt.strftime('%Y-%m-%d %I:%M %p %Z')}")
 
+frames = []
+with st.spinner("Generating HRRR Forecast GIF..."):
+    # Format strings for s3 path
+    date_str = most_recent_run_utc.strftime("%Y%m%d")
+    hour_str = most_recent_run_utc.strftime("%H")
+    # e.g., "hrrrzarr/sfc/20250324/20250324_12z_fcst.zarr/surface/GUST"
+    base_path = f"hrrrzarr/sfc/{date_str}/{date_str}_{hour_str}z_fcst.zarr/surface/GUST"
+
+    try:
+        ds = xr.open_zarr(lookup(base_path), consolidated=False)
+        # If "GUST" is not found at top-level, try sub-group "surface"
+        if 'GUST' not in ds:
+            ds = xr.open_zarr(lookup(f"{base_path}/surface"), consolidated=False)
+
+        # Convert from m/s to mph
+        ds['GUST_mph'] = ds.GUST * 2.23694
+
+        # Loop over forecast hours
+        for fh in forecast_hours:
+            if fh >= ds.dims["time"]:
+                # If the dataset doesn't have that many forecast hours, break early
+                break
+
+            # Select this forecast hour
+            gust_slice = ds.GUST_mph.isel(time=fh)
+
+            # The valid time for this forecast hour
+            # "time" coordinate is typically ds.time[fh] in UTC
+            valid_time_utc = ds.time[fh].values
+            # Convert from numpy datetime to python datetime
+            valid_time_utc = np.datetime64(valid_time_utc).astype('datetime64[s]').astype(datetime)
+            # Localize to UTC, then convert to Mountain
+            valid_time_utc = utc_tz.localize(valid_time_utc)
+            valid_time_mt = valid_time_utc.astimezone(mountain_tz)
+            title_str = valid_time_mt.strftime("%Y-%m-%d %I:%M %p %Z")
+
+            fig, ax = plt.subplots(figsize=(10, 6))
+            gust_slice.plot(
+                ax=ax, vmin=vmin, vmax=vmax, cmap="inferno",
+                cbar_kwargs={"orientation": "horizontal", "pad": 0.1}
+            )
+            ax.set_title(f"HRRR Wind Gust (mph) Forecast\nInit: {date_str} {hour_str}Z | Valid: {title_str}")
+            ax.set_xlabel("Longitude")
+            ax.set_ylabel("Latitude")
+            ax.grid(False)
+
+            buf = io.BytesIO()
+            plt.savefig(buf, format="png", dpi=300)
+            buf.seek(0)
+            frame = Image.open(buf).convert("RGB")
+            frames.append(frame)
+
+            plt.close(fig)
+            buf.close()
+
+        ds.close()
+        del ds
+        gc.collect()
+
+    except Exception as e:
+        st.error(f"Error retrieving or plotting data: {e}")
+
+    if frames:
+        gif_buffer = io.BytesIO()
+        frames[0].save(
+            gif_buffer,
+            format="GIF",
+            append_images=frames[1:],
+            save_all=True,
+            duration=500,  # 500 ms per frame (2 FPS)
+            loop=0
+        )
+        gif_buffer.seek(0)
+        # Encode the GIF to base64 so it animates in the app
+        gif_base64 = base64.b64encode(gif_buffer.getvalue()).decode("utf-8")
+        gif_html = f'<img src="data:image/gif;base64,{gif_base64}" alt="HRRR Wind Gust Forecast GIF" style="width:100%;">'
+        st.markdown(gif_html, unsafe_allow_html=True)
+        st.success("Forecast GIF generated successfully!")
+    else:
+        st.error("No frames were generated. GIF not created.")
 
