@@ -2150,7 +2150,7 @@ try:
             extent=(left, right, bottom, top),
             vmin=0,
             vmax=2,
-            transform=ccrs.epsg(5070),
+            transform=ccrs.epsg(4326),
             cmap=smoke_cmap
         )
         ax_smoke.add_feature(cfeature.STATES, edgecolor='white', linewidth=10)
