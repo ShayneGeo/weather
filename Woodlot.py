@@ -1298,9 +1298,84 @@ if st.button("Generate HRRR Wind Gust GIF"):
             st.error("No frames were generated. GIF not created.")
 
 
-# -----------------------------
+# # -----------------------------
+# # HRRR Smoke Visualization
+# # -----------------------------
+# st.title("HRRR Smoke Visualization (MASSDEN)")
+
+# try:
+#     with st.spinner("Fetching and processing data..."):
+#         # We'll shift by 2 hours from now to find the latest available
+#         now_utc_smoke = datetime.datetime.utcnow() - datetime.timedelta(hours=2)
+#         date_str_smoke = now_utc_smoke.strftime("%Y%m%d")
+#         hour_str_smoke = f"{now_utc_smoke.hour:02d}"
+
+#         path = f"hrrrzarr/sfc/{date_str_smoke}/{date_str_smoke}_{hour_str_smoke}z_anl.zarr/8m_above_ground/MASSDEN"
+#         path1 = f"hrrrzarr/sfc/{date_str}/{date_str}_{hour_str}z_anl.zarr/8m_above_ground/MASSDEN"
+#         path2 = f"{path1}/8m_above_ground"
+#         # ds_smoke = xr.open_mfdataset(
+#         #     [lookup(path), lookup(f"{path}/8m_above_ground")],
+#         #     engine="zarr",
+#         #     chunks={}
+#         # )
+#         ds = xr.open_mfdataset(
+#           [lookup(path1), lookup(path2)],
+#               engine="zarr",
+#               chunks=None   # disable chunking
+#           ).load()
+#         ds_smoke["SMOKE_ugm3"] = ds_smoke["MASSDEN"] * 1e9
+
+#         smoke_da = ds_smoke["SMOKE_ugm3"].rio.set_spatial_dims(
+#             x_dim="projection_x_coordinate",
+#             y_dim="projection_y_coordinate",
+#             inplace=False
+#         ).rio.write_crs(native_crs, inplace=False)
+#         smoke_da_reproj = smoke_da.rio.reproject("EPSG:5070")
+
+#         # Optionally write to a local file (disabled if you don't want to store):
+#         # output_dir = "temp_smoke"
+#         # os.makedirs(output_dir, exist_ok=True)
+#         # output_tif = os.path.join(output_dir, f"HRRR_Smoke_{date_str_smoke}_{hour_str_smoke}Z.tif")
+#         # smoke_da_reproj.rio.to_raster(output_tif)
+
+#         ds_smoke.close()
+#         del ds_smoke
+#         gc.collect()
+
+#     with st.spinner("Rendering map..."):
+#         # We'll do it fully in-memory now (no reading from TIF)
+#         data = smoke_da_reproj.values
+#         left, bottom, right, top = smoke_da_reproj.rio.bounds()
+
+#         fig = plt.figure(figsize=(10, 8))
+#         ax = plt.axes(projection=ccrs.AlbersEqualArea(central_longitude=-96, central_latitude=37))
+#         ax.set_extent([left, right, bottom, top], crs=ccrs.epsg(5070))
+
+#         smoke_cmap = LinearSegmentedColormap.from_list(
+#             "smoke",
+#             ["#000000", "#800000", "#FF4500", "#FFD700"],
+#             N=256
+#         )
+
+#         ax.imshow(
+#             data,
+#             origin='upper',
+#             extent=(left, right, bottom, top),
+#             vmin=0,
+#             vmax=2,
+#             transform=ccrs.epsg(5070),
+#             cmap=smoke_cmap
+#         )
+#         ax.add_feature(cfeature.STATES, edgecolor='white', linewidth=1)
+#         ax.add_feature(cfeature.COASTLINE, linewidth=1, edgecolor='white')
+#         ax.set_title(f"HRRR Smoke - {date_str_smoke} {hour_str_smoke}Z")
+#         st.pyplot(fig)
+
+# except Exception as e:
+#     st.error(f"Could not fetch or plot data for {date_str_smoke} {hour_str_smoke}Z: {e}")
+
+
 # HRRR Smoke Visualization
-# -----------------------------
 st.title("HRRR Smoke Visualization (MASSDEN)")
 
 try:
@@ -1310,40 +1385,34 @@ try:
         date_str_smoke = now_utc_smoke.strftime("%Y%m%d")
         hour_str_smoke = f"{now_utc_smoke.hour:02d}"
 
-        path = f"hrrrzarr/sfc/{date_str_smoke}/{date_str_smoke}_{hour_str_smoke}z_anl.zarr/8m_above_ground/MASSDEN"
-        path1 = f"hrrrzarr/sfc/{date_str}/{date_str}_{hour_str}z_anl.zarr/8m_above_ground/MASSDEN"
+        # Construct the HRRR S3 paths for MASSDEN (two subdirectories):
+        path1 = f"hrrrzarr/sfc/{date_str_smoke}/{date_str_smoke}_{hour_str_smoke}z_anl.zarr/8m_above_ground/MASSDEN"
         path2 = f"{path1}/8m_above_ground"
-        # ds_smoke = xr.open_mfdataset(
-        #     [lookup(path), lookup(f"{path}/8m_above_ground")],
-        #     engine="zarr",
-        #     chunks={}
-        # )
-        ds = xr.open_mfdataset(
-          [lookup(path1), lookup(path2)],
-              engine="zarr",
-              chunks=None   # disable chunking
-          ).load()
+
+        # Disable chunking and load
+        ds_smoke = xr.open_mfdataset(
+            [lookup(path1), lookup(path2)],
+            engine="zarr",
+            chunks=None
+        ).load()
+
+        # Convert from kg/m³ to µg/m³
         ds_smoke["SMOKE_ugm3"] = ds_smoke["MASSDEN"] * 1e9
 
-        smoke_da = ds_smoke["SMOKE_ugm3"].rio.set_spatial_dims(
+        # Assign spatial dims and CRS
+        ds_smoke = ds_smoke["SMOKE_ugm3"].rio.set_spatial_dims(
             x_dim="projection_x_coordinate",
-            y_dim="projection_y_coordinate",
-            inplace=False
-        ).rio.write_crs(native_crs, inplace=False)
-        smoke_da_reproj = smoke_da.rio.reproject("EPSG:5070")
+            y_dim="projection_y_coordinate"
+        ).rio.write_crs(native_crs)
 
-        # Optionally write to a local file (disabled if you don't want to store):
-        # output_dir = "temp_smoke"
-        # os.makedirs(output_dir, exist_ok=True)
-        # output_tif = os.path.join(output_dir, f"HRRR_Smoke_{date_str_smoke}_{hour_str_smoke}Z.tif")
-        # smoke_da_reproj.rio.to_raster(output_tif)
+        # Reproject to EPSG:5070
+        smoke_da_reproj = ds_smoke.rio.reproject("EPSG:5070")
 
-        ds_smoke.close()
+        # Cleanup
         del ds_smoke
         gc.collect()
 
     with st.spinner("Rendering map..."):
-        # We'll do it fully in-memory now (no reading from TIF)
         data = smoke_da_reproj.values
         left, bottom, right, top = smoke_da_reproj.rio.bounds()
 
@@ -1352,9 +1421,7 @@ try:
         ax.set_extent([left, right, bottom, top], crs=ccrs.epsg(5070))
 
         smoke_cmap = LinearSegmentedColormap.from_list(
-            "smoke",
-            ["#000000", "#800000", "#FF4500", "#FFD700"],
-            N=256
+            "smoke", ["#000000", "#800000", "#FF4500", "#FFD700"], N=256
         )
 
         ax.imshow(
@@ -1367,12 +1434,10 @@ try:
             cmap=smoke_cmap
         )
         ax.add_feature(cfeature.STATES, edgecolor='white', linewidth=1)
-        ax.add_feature(cfeature.COASTLINE, linewidth=1, edgecolor='white')
+        ax.add_feature(cfeature.COASTLINE, edgecolor='white', linewidth=1)
         ax.set_title(f"HRRR Smoke - {date_str_smoke} {hour_str_smoke}Z")
+
         st.pyplot(fig)
 
 except Exception as e:
     st.error(f"Could not fetch or plot data for {date_str_smoke} {hour_str_smoke}Z: {e}")
-
-
-
