@@ -647,7 +647,7 @@ import cartopy.crs as ccrs
 import cartopy.feature as cfeature
 from matplotlib.colors import LinearSegmentedColormap
 
-# Anonymous S3 and lookup helper
+# Anonymous S3 and helper function to lookup a Zarr store
 s3 = s3fs.S3FileSystem(anon=True)
 def lookup(path):
     return s3fs.S3Map(path, s3=s3)
@@ -655,7 +655,7 @@ def lookup(path):
 # Native HRRR Lambert Conformal Conic CRS
 native_crs = "+proj=lcc +lat_1=38.5 +lat_2=38.5 +lat_0=38.5 +lon_0=-97.5 +x_0=0 +y_0=0 +datum=WGS84 +units=m +no_defs"
 
-# Determine the most recent HRRR run (runs at 00, 06, 12, 18 UTC; adjust by a 2-hour delay)
+# Determine the most recent HRRR run time (runs at 00, 06, 12, 18 UTC; adjust by a 2-hour delay)
 adjusted_time = datetime.utcnow() - timedelta(hours=2)
 most_recent_run_hour = (adjusted_time.hour // 6) * 6
 most_recent_run_utc = adjusted_time.replace(hour=most_recent_run_hour, minute=0, second=0, microsecond=0)
@@ -665,61 +665,70 @@ hour_str = f"{most_recent_run_utc.hour:02d}"
 st.title("HRRR Smoke Visualization (MASSDEN)")
 st.write(f"Most recent HRRR run (UTC): {most_recent_run_utc}")
 
-# S3 path for HRRR Smoke MASSDEN data
+# Build the S3 path for HRRR Smoke MASSDEN data
 path = f"hrrrzarr/sfc/{date_str}/{date_str}_{hour_str}z_anl.zarr/8m_above_ground/MASSDEN"
 
 with st.spinner("Fetching and processing HRRR Smoke data..."):
     try:
-        # Open the dataset without specifying chunks to load data into memory
+        # Open both parts of the dataset with no chunking and load immediately into memory
         ds = xr.open_mfdataset(
             [lookup(path), lookup(f"{path}/8m_above_ground")],
-            engine="zarr"
+            engine="zarr",
+            chunks=None
         )
+        ds = ds.load()  # Force the dataset to load into memory to avoid dask chunks issues
+        
         # Convert MASSDEN (kg/m³) to µg/m³
         ds["SMOKE_ugm3"] = ds["MASSDEN"] * 1e9
-        # Set spatial dimensions and assign CRS
+        
+        # Set spatial dimensions and assign the CRS
         smoke_da = ds["SMOKE_ugm3"].rio.set_spatial_dims(
             x_dim="projection_x_coordinate",
             y_dim="projection_y_coordinate",
             inplace=False
-        ).rio.write_crs(native_crs, inplace=False)
-        # Reproject to EPSG:5070
+        )
+        smoke_da = smoke_da.rio.write_crs(native_crs, inplace=False)
+        
+        # Reproject the data to EPSG:5070
         smoke_da_reproj = smoke_da.rio.reproject("EPSG:5070")
-        # Load the reprojected data into memory
+        
+        # Load data into a numpy array and get the bounds
         smoke_data = smoke_da_reproj.values
-        # Get spatial bounds from the reprojected DataArray
         left, bottom, right, top = smoke_da_reproj.rio.bounds()
+        
         ds.close()
         del ds
         gc.collect()
     except Exception as e:
-        st.error(f"Error processing HRRR Smoke data: {e}")
+        st.error("Error processing HRRR Smoke data: " + str(e))
 
-with st.spinner("Rendering HRRR Smoke map..."):
-    try:
-        fig = plt.figure(figsize=(10, 8))
-        ax = plt.axes(projection=ccrs.AlbersEqualArea(central_longitude=-96, central_latitude=37))
-        ax.set_extent([left, right, bottom, top], crs=ccrs.epsg(5070))
-        smoke_cmap = LinearSegmentedColormap.from_list(
-            "smoke",
-            ["#000000", "#800000", "#FF4500", "#FFD700"],
-            N=256
-        )
-        ax.imshow(
-            smoke_data,
-            origin='upper',
-            extent=(left, right, bottom, top),
-            vmin=0,
-            vmax=2,
-            transform=ccrs.epsg(5070),
-            cmap=smoke_cmap
-        )
-        ax.add_feature(cfeature.STATES, edgecolor='white', linewidth=1)
-        ax.add_feature(cfeature.COASTLINE, edgecolor='white', linewidth=1)
-        ax.set_title(f"HRRR Smoke - {date_str} {hour_str}Z (µg/m³)")
-        st.pyplot(fig)
-    except Exception as e:
-        st.error(f"Error rendering map: {e}")
+if 'smoke_data' in locals():
+    with st.spinner("Rendering HRRR Smoke map..."):
+        try:
+            fig = plt.figure(figsize=(10, 8))
+            ax = plt.axes(projection=ccrs.AlbersEqualArea(central_longitude=-96, central_latitude=37))
+            ax.set_extent([left, right, bottom, top], crs=ccrs.epsg(5070))
+            
+            # Define a custom colormap for smoke visualization
+            smoke_cmap = LinearSegmentedColormap.from_list(
+                "smoke", ["#000000", "#800000", "#FF4500", "#FFD700"], N=256
+            )
+            
+            ax.imshow(
+                smoke_data,
+                origin='upper',
+                extent=(left, right, bottom, top),
+                vmin=0,
+                vmax=2,
+                transform=ccrs.epsg(5070),
+                cmap=smoke_cmap
+            )
+            ax.add_feature(cfeature.STATES, edgecolor='white', linewidth=1)
+            ax.add_feature(cfeature.COASTLINE, edgecolor='white', linewidth=1)
+            ax.set_title(f"HRRR Smoke - {date_str} {hour_str}Z (µg/m³)")
+            st.pyplot(fig)
+        except Exception as e:
+            st.error("Error rendering map: " + str(e))
 
 
 
