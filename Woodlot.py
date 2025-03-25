@@ -2198,11 +2198,14 @@ path = f"hrrrzarr/sfc/{date_str}/{date_str}_{hour_str}z_anl.zarr/8m_above_ground
 
 try:
     # Open the dataset via Zarr
-    ds = xr.open_mfdataset(
-        [lookup(path), lookup(f"{path}/8m_above_ground")],
-        engine="zarr",
-        chunks=None
-    )
+    # ds = xr.open_mfdataset(
+    #     [lookup(path), lookup(f"{path}/8m_above_ground")],
+    #     engine="zarr",
+    #     chunks=None
+    # )
+    ds1 = xr.open_zarr(lookup(path1), engine="zarr", chunks=None).load()
+    ds2 = xr.open_zarr(lookup(path2), engine="zarr", chunks=None).load()
+    ds = xr.merge([ds1, ds2])
 
     # Convert MASSDEN (kg/m³) to µg/m³
     ds["SMOKE_ugm3"] = ds["MASSDEN"] * 1e9
