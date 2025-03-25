@@ -2164,108 +2164,121 @@ def lookup(path):
 #     st.error(f"Could not fetch or plot data for {date_str_smoke} {hour_str_smoke}Z: {str(e)}")
 #     raise
 
+import streamlit as st
+st.set_page_config(layout="wide")
+
 import s3fs
 import xarray as xr
 import rioxarray
 import matplotlib.pyplot as plt
+import os
 import gc
 from datetime import datetime, timedelta
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
-import streamlit as st
 from matplotlib.colors import LinearSegmentedColormap
-import io
 
-# Anonymous S3
+# Anonymous S3 and helper function
 s3 = s3fs.S3FileSystem(anon=True)
-
 def lookup(path):
     return s3fs.S3Map(path, s3=s3)
 
-# Native HRRR Lambert Conformal Conic CRS
-native_crs = "+proj=lcc +lat_1=38.5 +lat_2=38.5 +lat_0=38.5 +lon_0=-97.5 +x_0=0 +y_0=0 +datum=WGS84 +units=m +no_defs"
+# Native HRRR Lambert Conformal Conic CRS string
+native_crs = (
+    "+proj=lcc +lat_1=38.5 +lat_2=38.5 +lat_0=38.5 "
+    "+lon_0=-97.5 +x_0=0 +y_0=0 +datum=WGS84 +units=m +no_defs"
+)
 
-# Streamlit app
-st.title("HRRR Smoke Visualization")
-
-# Current date/time in UTC, minus 2 hours
+# Get the most recent HRRR run time (UTC minus 2 hours)
 now_utc = datetime.utcnow() - timedelta(hours=2)
 date_str = now_utc.strftime("%Y%m%d")
 hour_str = f"{now_utc.hour:02d}"
 
-# S3 path for the HRRR-Smoke MASSDEN data
-path = f"hrrrzarr/sfc/{date_str}/{date_str}_{hour_str}z_anl.zarr/8m_above_ground/MASSDEN/8m_above_ground"
+st.title("HRRR Smoke Visualization (MASSDEN)")
 
 try:
-    # Open the dataset via Zarr
-    # ds = xr.open_mfdataset(
-    #     [lookup(path), lookup(f"{path}/8m_above_ground")],
-    #     engine="zarr",
-    #     chunks=None
-    # )
-    ds = xr.open_zarr(lookup(path), chunks=None).load()#, engine="zarr"
-    #ds2 = xr.open_zarr(lookup(path2), engine="zarr", chunks=None).load()
-    #ds = xr.merge([ds1, ds2])
+    with st.spinner("Fetching and processing data..."):
+        # Construct S3 paths for MASSDEN (the data may be split across two subdirectories)
+        path1 = f"hrrrzarr/sfc/{date_str}/{date_str}_{hour_str}z_anl.zarr/8m_above_ground/MASSDEN"
+        path2 = f"{path1}/8m_above_ground"
 
-    # Convert MASSDEN (kg/m³) to µg/m³
-    ds["SMOKE_ugm3"] = ds["MASSDEN"] * 1e9
+        # Try to open the dataset using open_zarr (which does not use Dask)
+        try:
+            ds_smoke = xr.open_zarr(lookup(path1), chunks=None).load()#, engine="zarr"
+        except Exception as e:
+            st.write("Error reading path1, trying path2...", e)
+            ds_smoke = xr.open_zarr(lookup(path2), chunks=None).load()#, engine="zarr"
 
-    # Set spatial dims and CRS
-    smoke_da = ds["SMOKE_ugm3"].rio.set_spatial_dims(
-        x_dim="projection_x_coordinate",
-        y_dim="projection_y_coordinate",
-        inplace=False
-    )
-    smoke_da = smoke_da.rio.write_crs(native_crs, inplace=False)
+        # Convert MASSDEN (kg/m³) to micrograms per cubic meter (µg/m³)
+        ds_smoke["SMOKE_ugm3"] = ds_smoke["MASSDEN"] * 1e9
+        da_smoke = ds_smoke["SMOKE_ugm3"]
 
-    # Reproject to EPSG:5070
-    smoke_da_reproj = smoke_da.rio.reproject("EPSG:5070")
+        # If the data uses dims "x" and "y", rename them to the projection dims we need:
+        if "x" in da_smoke.dims and "y" in da_smoke.dims:
+            da_smoke = da_smoke.rename({"x": "projection_x_coordinate", "y": "projection_y_coordinate"})
 
-    # Get the data array and bounds
-    data = smoke_da_reproj.values
-    left, bottom, right, top = smoke_da_reproj.rio.bounds()
+        # Ensure these dimensions are actually coordinates
+        if "projection_x_coordinate" in da_smoke.dims:
+            da_smoke = da_smoke.assign_coords(
+                projection_x_coordinate=da_smoke["projection_x_coordinate"]
+            )
+        if "projection_y_coordinate" in da_smoke.dims:
+            da_smoke = da_smoke.assign_coords(
+                projection_y_coordinate=da_smoke["projection_y_coordinate"]
+            )
 
-    # Clean up memory
-    ds.close()
-    del ds
-    gc.collect()
+        # Set the spatial dimensions and write the CRS
+        da_smoke = da_smoke.rio.set_spatial_dims(
+            x_dim="projection_x_coordinate",
+            y_dim="projection_y_coordinate",
+            inplace=False
+        )
+        da_smoke = da_smoke.rio.write_crs(native_crs, inplace=False)
 
-    # Create the plot
-    fig = plt.figure(figsize=(10, 8))
-    ax = plt.axes(projection=ccrs.AlbersEqualArea(central_longitude=-96, central_latitude=37))
-    ax.set_extent([left, right, bottom, top], crs=ccrs.epsg(5070))
+        # Reproject to EPSG:5070
+        smoke_da_reproj = da_smoke.rio.reproject("EPSG:5070")
 
-    # Define custom colormap
-    smoke_cmap = LinearSegmentedColormap.from_list(
-        "smoke",
-        ["#000000", "#800000", "#FF4500", "#FFD700"],  # black → maroon → orange → gold
-        N=256
-    )
+        # Cleanup
+        ds_smoke.close()
+        del ds_smoke
+        gc.collect()
 
-    # Plot the data
-    ax.imshow(
-        data,
-        origin='upper',
-        extent=(left, right, bottom, top),
-        vmin=0,
-        vmax=2,
-        transform=ccrs.epsg(5070),
-        cmap=smoke_cmap
-    )
+    with st.spinner("Rendering map..."):
+        # Get data and spatial bounds
+        data = smoke_da_reproj.values
+        left, bottom, right, top = smoke_da_reproj.rio.bounds()
 
-    # Add features
-    ax.add_feature(cfeature.STATES, edgecolor='white', linewidth=1)
-    ax.add_feature(cfeature.COASTLINE, linewidth=1, edgecolor='white')
+        # Create a figure with Cartopy using an Albers Equal Area projection
+        fig = plt.figure(figsize=(10, 8))
+        ax = plt.axes(projection=ccrs.AlbersEqualArea(central_longitude=-96, central_latitude=37))
+        ax.set_extent([left, right, bottom, top], crs=ccrs.epsg(5070))
 
-    # Set title
-    ax.set_title(f"HRRR Smoke - {date_str} {hour_str}Z")
+        # Define a custom smoke colormap (black → maroon → orange → gold)
+        smoke_cmap = LinearSegmentedColormap.from_list(
+            "smoke",
+            ["#000000", "#800000", "#FF4500", "#FFD700"],
+            N=256
+        )
 
-    # Display in Streamlit
-    buf = io.BytesIO()
-    plt.savefig(buf, format='png', bbox_inches='tight')
-    buf.seek(0)
-    st.image(buf, caption=f"Smoke Concentration (µg/m³) at {date_str} {hour_str}Z")
-    plt.close()
+        # Plot the smoke data; adjust vmin/vmax as needed
+        ax.imshow(
+            data,
+            origin='upper',
+            extent=(left, right, bottom, top),
+            vmin=0,
+            vmax=2,
+            transform=ccrs.epsg(5070),
+            cmap=smoke_cmap
+        )
+
+        # Add state boundaries and coastlines in white
+        ax.add_feature(cfeature.STATES, edgecolor='white', linewidth=1)
+        ax.add_feature(cfeature.COASTLINE, edgecolor='white', linewidth=1)
+
+        ax.set_title(f"HRRR Smoke - {date_str} {hour_str}Z")
+        st.pyplot(fig)
+        st.success("HRRR Smoke visualization completed!")
 
 except Exception as e:
-    st.error(f"Could not fetch or plot data for {date_str} {hour_str}Z: {e}")
+    st.error(f"Could not fetch or plot data for {date_str} {hour_str}Z: {str(e)}")
+
