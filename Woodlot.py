@@ -2151,7 +2151,9 @@ try:
             vmin=0,
             vmax=2,
             transform=ccrs.epsg(5070),
-            cmap=smoke_cmap
+            cmap=smoke_cmap,
+            zorder=20  # <-- this is key
+
         )
         #ax_smoke.add_feature(cfeature.STATES, edgecolor='white', linewidth=10)
         #ax_smoke.add_feature(cfeature.COASTLINE, edgecolor='white', linewidth=10)
