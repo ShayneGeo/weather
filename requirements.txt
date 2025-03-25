@@ -21,3 +21,4 @@ rasterio
 plotly
 imageio
 rioxarray
+scipy
