@@ -536,7 +536,7 @@ from datetime import datetime, timedelta
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
 
-st.set_page_config(layout="wide")
+#st.set_page_config(layout="wide")
 st.title("HRRR Smoke Visualization (MASSDEN)")
 
 # Anonymous S3
