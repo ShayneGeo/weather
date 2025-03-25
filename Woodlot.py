@@ -2079,14 +2079,12 @@ try:
         path1 = f"hrrrzarr/sfc/{date_str_smoke}/{date_str_smoke}_{hour_str_smoke}z_anl.zarr/8m_above_ground/MASSDEN"
         path2 = f"{path1}/8m_above_ground"
 
-        # Open Zarr dataset directly without Dask
         ds_smoke = xr.open_zarr(
-            lookup(path1), 
+            lookup(path1),
             consolidated=False,
             decode_cf=True
-        ).load()  # Load into memory immediately
-
-        # Check if MASSDEN is in the secondary path if not found in path1
+        ).load()
+        # If MASSDEN not found, try the second subdirectory
         if "MASSDEN" not in ds_smoke:
             ds_smoke = xr.open_zarr(
                 lookup(path2),
@@ -2094,18 +2092,41 @@ try:
                 decode_cf=True
             ).load()
 
-        # Convert MASSDEN to micrograms per cubic meter
+        # Convert MASSDEN -> micrograms/m³
         ds_smoke["SMOKE_ugm3"] = ds_smoke["MASSDEN"] * 1e9
+        da_smoke = ds_smoke["SMOKE_ugm3"]
 
-        # Assign spatial dims & reproject
-        ds_smoke = ds_smoke["SMOKE_ugm3"].rio.set_spatial_dims(
+        # ---- IMPORTANT: rename dimension(s) to match the set_spatial_dims below.
+        #     For example, if your dims are "x" and "y", do this:
+        if "x" in da_smoke.dims and "y" in da_smoke.dims:
+            da_smoke = da_smoke.rename({"x": "projection_x_coordinate",
+                                        "y": "projection_y_coordinate"})
+
+        # Now assign them as real coordinates so rioxarray sees them:
+        # This step ensures "projection_x_coordinate" and "projection_y_coordinate"
+        # are coordinates, not just dimension names.
+        if "projection_x_coordinate" in da_smoke.dims:
+            da_smoke = da_smoke.assign_coords(
+                projection_x_coordinate=da_smoke["projection_x_coordinate"]
+            )
+        if "projection_y_coordinate" in da_smoke.dims:
+            da_smoke = da_smoke.assign_coords(
+                projection_y_coordinate=da_smoke["projection_y_coordinate"]
+            )
+
+        # Now mark them as the spatial dims & write the CRS
+        da_smoke = da_smoke.rio.set_spatial_dims(
             x_dim="projection_x_coordinate",
-            y_dim="projection_y_coordinate"
-        ).rio.write_crs(
-            "+proj=lcc +lat_1=38.5 +lat_2=38.5 +lat_0=38.5 +lon_0=-97.5 +x_0=0 +y_0=0 +datum=WGS84 +units=m +no_defs"
+            y_dim="projection_y_coordinate",
+            inplace=False
+        )
+        da_smoke = da_smoke.rio.write_crs(
+            "+proj=lcc +lat_1=38.5 +lat_2=38.5 +lat_0=38.5 +lon_0=-97.5 +x_0=0 +y_0=0 +datum=WGS84 +units=m +no_defs",
+            inplace=False
         )
 
-        smoke_da_reproj = ds_smoke.rio.reproject("EPSG:5070")
+        # Now reproject
+        smoke_da_reproj = da_smoke.rio.reproject("EPSG:5070")
 
         # Cleanup
         del ds_smoke
@@ -2141,4 +2162,5 @@ try:
 
 except Exception as e:
     st.error(f"Could not fetch or plot data for {date_str_smoke} {hour_str_smoke}Z: {str(e)}")
-    raise  # Re-raise the exception for debugging if needed
+    raise
+
