@@ -1,4 +1,9 @@
 import streamlit as st
+
+# 1) -- MUST be first Streamlit command --
+st.set_page_config(layout="wide")
+
+import streamlit as st
 import requests
 import pandas as pd
 import s3fs
