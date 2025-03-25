@@ -1994,6 +1994,75 @@ def lookup(path):
 #         else:
 #             st.error("No frames were generated. GIF not created.")
 
+# # --------------------------------------------------
+# # 4. HRRR Smoke Visualization (MASSDEN)
+# # --------------------------------------------------
+# st.title("HRRR Smoke Visualization (MASSDEN)")
+
+# try:
+#     with st.spinner("Fetching and processing data..."):
+#         # We'll shift by 2 hours to find the latest available smoke data
+#         now_utc_smoke = datetime.datetime.utcnow() - datetime.timedelta(hours=2)
+#         date_str_smoke = now_utc_smoke.strftime("%Y%m%d")
+#         hour_str_smoke = f"{now_utc_smoke.hour:02d}"
+
+#         # S3 subdirectories for MASSDEN
+#         path1 = f"hrrrzarr/sfc/{date_str_smoke}/{date_str_smoke}_{hour_str_smoke}z_anl.zarr/8m_above_ground/MASSDEN"
+#         path2 = f"{path1}/8m_above_ground"
+
+#         # Disable dask chunking, load everything into memory
+#         ds_smoke = xr.open_mfdataset(
+#             [lookup(path1), lookup(path2)],
+#             engine="zarr",
+#             chunks=None
+#         ).load()
+
+#         ds_smoke["SMOKE_ugm3"] = ds_smoke["MASSDEN"] * 1e9
+
+#         # Assign spatial dims & reproject
+#         ds_smoke = ds_smoke["SMOKE_ugm3"].rio.set_spatial_dims(
+#             x_dim="projection_x_coordinate",
+#             y_dim="projection_y_coordinate"
+#         ).rio.write_crs(
+#             "+proj=lcc +lat_1=38.5 +lat_2=38.5 +lat_0=38.5 +lon_0=-97.5 +x_0=0 +y_0=0 +datum=WGS84 +units=m +no_defs"
+#         )
+
+#         smoke_da_reproj = ds_smoke.rio.reproject("EPSG:5070")
+
+#         # Cleanup
+#         del ds_smoke
+#         gc.collect()
+
+#     with st.spinner("Rendering map..."):
+#         data = smoke_da_reproj.values
+#         left, bottom, right, top = smoke_da_reproj.rio.bounds()
+
+#         fig_smoke = plt.figure(figsize=(10, 8))
+#         ax_smoke = plt.axes(projection=ccrs.AlbersEqualArea(central_longitude=-96, central_latitude=37))
+#         ax_smoke.set_extent([left, right, bottom, top], crs=ccrs.epsg(5070))
+
+#         smoke_cmap = LinearSegmentedColormap.from_list(
+#             "smoke", ["#000000", "#800000", "#FF4500", "#FFD700"], N=256
+#         )
+
+#         ax_smoke.imshow(
+#             data,
+#             origin='upper',
+#             extent=(left, right, bottom, top),
+#             vmin=0,
+#             vmax=2,
+#             transform=ccrs.epsg(5070),
+#             cmap=smoke_cmap
+#         )
+#         ax_smoke.add_feature(cfeature.STATES, edgecolor='white', linewidth=1)
+#         ax_smoke.add_feature(cfeature.COASTLINE, edgecolor='white', linewidth=1)
+#         ax_smoke.set_title(f"HRRR Smoke - {date_str_smoke} {hour_str_smoke}Z")
+
+#         st.pyplot(fig_smoke)
+
+# except Exception as e:
+#     st.error(f"Could not fetch or plot data for {date_str_smoke} {hour_str_smoke}Z: {e}")
+
 # --------------------------------------------------
 # 4. HRRR Smoke Visualization (MASSDEN)
 # --------------------------------------------------
@@ -2001,7 +2070,7 @@ st.title("HRRR Smoke Visualization (MASSDEN)")
 
 try:
     with st.spinner("Fetching and processing data..."):
-        # We'll shift by 2 hours to find the latest available smoke data
+        # Shift by 2 hours to find the latest available smoke data
         now_utc_smoke = datetime.datetime.utcnow() - datetime.timedelta(hours=2)
         date_str_smoke = now_utc_smoke.strftime("%Y%m%d")
         hour_str_smoke = f"{now_utc_smoke.hour:02d}"
@@ -2010,13 +2079,22 @@ try:
         path1 = f"hrrrzarr/sfc/{date_str_smoke}/{date_str_smoke}_{hour_str_smoke}z_anl.zarr/8m_above_ground/MASSDEN"
         path2 = f"{path1}/8m_above_ground"
 
-        # Disable dask chunking, load everything into memory
-        ds_smoke = xr.open_mfdataset(
-            [lookup(path1), lookup(path2)],
-            engine="zarr",
-            chunks=None
-        ).load()
+        # Open Zarr dataset directly without Dask
+        ds_smoke = xr.open_zarr(
+            lookup(path1), 
+            consolidated=False,
+            decode_cf=True
+        ).load()  # Load into memory immediately
 
+        # Check if MASSDEN is in the secondary path if not found in path1
+        if "MASSDEN" not in ds_smoke:
+            ds_smoke = xr.open_zarr(
+                lookup(path2),
+                consolidated=False,
+                decode_cf=True
+            ).load()
+
+        # Convert MASSDEN to micrograms per cubic meter
         ds_smoke["SMOKE_ugm3"] = ds_smoke["MASSDEN"] * 1e9
 
         # Assign spatial dims & reproject
@@ -2059,7 +2137,8 @@ try:
         ax_smoke.set_title(f"HRRR Smoke - {date_str_smoke} {hour_str_smoke}Z")
 
         st.pyplot(fig_smoke)
+        st.success("HRRR Smoke visualization completed!")
 
 except Exception as e:
-    st.error(f"Could not fetch or plot data for {date_str_smoke} {hour_str_smoke}Z: {e}")
-
+    st.error(f"Could not fetch or plot data for {date_str_smoke} {hour_str_smoke}Z: {str(e)}")
+    raise  # Re-raise the exception for debugging if needed
