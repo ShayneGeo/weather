@@ -20,3 +20,4 @@ numcodecs==0.13.1
 rasterio
 plotly
 imageio
+rioxarray
