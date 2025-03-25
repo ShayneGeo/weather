@@ -1311,7 +1311,8 @@ try:
         hour_str_smoke = f"{now_utc_smoke.hour:02d}"
 
         path = f"hrrrzarr/sfc/{date_str_smoke}/{date_str_smoke}_{hour_str_smoke}z_anl.zarr/8m_above_ground/MASSDEN"
-
+        path1 = f"hrrrzarr/sfc/{date_str}/{date_str}_{hour_str}z_anl.zarr/8m_above_ground/MASSDEN"
+        path2 = f"{path1}/8m_above_ground"
         # ds_smoke = xr.open_mfdataset(
         #     [lookup(path), lookup(f"{path}/8m_above_ground")],
         #     engine="zarr",
