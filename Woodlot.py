@@ -647,15 +647,18 @@ import cartopy.crs as ccrs
 import cartopy.feature as cfeature
 from matplotlib.colors import LinearSegmentedColormap
 
-# Anonymous S3 and helper function to lookup a Zarr store
+# Anonymous S3 and helper function
 s3 = s3fs.S3FileSystem(anon=True)
 def lookup(path):
     return s3fs.S3Map(path, s3=s3)
 
 # Native HRRR Lambert Conformal Conic CRS
-native_crs = "+proj=lcc +lat_1=38.5 +lat_2=38.5 +lat_0=38.5 +lon_0=-97.5 +x_0=0 +y_0=0 +datum=WGS84 +units=m +no_defs"
+native_crs = (
+    "+proj=lcc +lat_1=38.5 +lat_2=38.5 +lat_0=38.5 "
+    "+lon_0=-97.5 +x_0=0 +y_0=0 +datum=WGS84 +units=m +no_defs"
+)
 
-# Determine the most recent HRRR run time (runs at 00, 06, 12, 18 UTC; adjust by a 2-hour delay)
+# Determine the most recent HRRR run time (runs at 00, 06, 12, 18 UTC; apply a 2-hour delay)
 adjusted_time = datetime.utcnow() - timedelta(hours=2)
 most_recent_run_hour = (adjusted_time.hour // 6) * 6
 most_recent_run_utc = adjusted_time.replace(hour=most_recent_run_hour, minute=0, second=0, microsecond=0)
@@ -665,39 +668,30 @@ hour_str = f"{most_recent_run_utc.hour:02d}"
 st.title("HRRR Smoke Visualization (MASSDEN)")
 st.write(f"Most recent HRRR run (UTC): {most_recent_run_utc}")
 
-# Build the S3 path for HRRR Smoke MASSDEN data
-path = f"hrrrzarr/sfc/{date_str}/{date_str}_{hour_str}z_anl.zarr/8m_above_ground/MASSDEN"
+# Build S3 paths for the two components of the dataset
+path1 = f"hrrrzarr/sfc/{date_str}/{date_str}_{hour_str}z_anl.zarr/8m_above_ground/MASSDEN"
+path2 = f"{path1}/8m_above_ground"
 
 with st.spinner("Fetching and processing HRRR Smoke data..."):
     try:
-        # Open both parts of the dataset with no chunking and load immediately into memory
-        ds = xr.open_mfdataset(
-            [lookup(path), lookup(f"{path}/8m_above_ground")],
-            engine="zarr",
-            chunks=None
-        )
-        ds = ds.load()  # Force the dataset to load into memory to avoid dask chunks issues
-        
+        # Open the two parts separately with chunks disabled and load into memory immediately
+        ds1 = xr.open_zarr(lookup(path1), chunks=None).load()
+        ds2 = xr.open_zarr(lookup(path2), chunks=None).load()
+        # Merge the two datasets
+        ds = xr.merge([ds1, ds2])
         # Convert MASSDEN (kg/m³) to µg/m³
         ds["SMOKE_ugm3"] = ds["MASSDEN"] * 1e9
-        
-        # Set spatial dimensions and assign the CRS
+        # Set spatial dimensions and assign CRS
         smoke_da = ds["SMOKE_ugm3"].rio.set_spatial_dims(
-            x_dim="projection_x_coordinate",
-            y_dim="projection_y_coordinate",
-            inplace=False
-        )
-        smoke_da = smoke_da.rio.write_crs(native_crs, inplace=False)
-        
-        # Reproject the data to EPSG:5070
+            x_dim="projection_x_coordinate", y_dim="projection_y_coordinate", inplace=False
+        ).rio.write_crs(native_crs, inplace=False)
+        # Reproject to EPSG:5070
         smoke_da_reproj = smoke_da.rio.reproject("EPSG:5070")
-        
-        # Load data into a numpy array and get the bounds
+        # Extract data and bounds
         smoke_data = smoke_da_reproj.values
         left, bottom, right, top = smoke_da_reproj.rio.bounds()
-        
         ds.close()
-        del ds
+        del ds, ds1, ds2
         gc.collect()
     except Exception as e:
         st.error("Error processing HRRR Smoke data: " + str(e))
@@ -708,12 +702,9 @@ if 'smoke_data' in locals():
             fig = plt.figure(figsize=(10, 8))
             ax = plt.axes(projection=ccrs.AlbersEqualArea(central_longitude=-96, central_latitude=37))
             ax.set_extent([left, right, bottom, top], crs=ccrs.epsg(5070))
-            
-            # Define a custom colormap for smoke visualization
             smoke_cmap = LinearSegmentedColormap.from_list(
                 "smoke", ["#000000", "#800000", "#FF4500", "#FFD700"], N=256
             )
-            
             ax.imshow(
                 smoke_data,
                 origin='upper',
