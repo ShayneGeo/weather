@@ -2153,8 +2153,8 @@ try:
             transform=ccrs.epsg(5070),
             cmap=smoke_cmap
         )
-        ax_smoke.add_feature(cfeature.STATES, edgecolor='white', linewidth=1)
-        ax_smoke.add_feature(cfeature.COASTLINE, edgecolor='white', linewidth=1)
+        ax_smoke.add_feature(cfeature.STATES, edgecolor='white', linewidth=10)
+        ax_smoke.add_feature(cfeature.COASTLINE, edgecolor='white', linewidth=10)
         ax_smoke.set_title(f"HRRR Smoke - {date_str_smoke} {hour_str_smoke}Z")
 
         st.pyplot(fig_smoke)
