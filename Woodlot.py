@@ -2201,7 +2201,7 @@ try:
     ds = xr.open_mfdataset(
         [lookup(path), lookup(f"{path}/8m_above_ground")],
         engine="zarr",
-        chunks={}
+        chunks=None
     )
 
     # Convert MASSDEN (kg/m³) to µg/m³
