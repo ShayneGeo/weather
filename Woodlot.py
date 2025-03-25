@@ -2203,9 +2203,9 @@ try:
     #     engine="zarr",
     #     chunks=None
     # )
-    ds1 = xr.open_zarr(lookup(path1), engine="zarr", chunks=None).load()
-    ds2 = xr.open_zarr(lookup(path2), engine="zarr", chunks=None).load()
-    ds = xr.merge([ds1, ds2])
+    ds = xr.open_zarr(lookup(path), engine="zarr", chunks=None).load()
+    #ds2 = xr.open_zarr(lookup(path2), engine="zarr", chunks=None).load()
+    #ds = xr.merge([ds1, ds2])
 
     # Convert MASSDEN (kg/m³) to µg/m³
     ds["SMOKE_ugm3"] = ds["MASSDEN"] * 1e9
