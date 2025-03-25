@@ -1312,11 +1312,16 @@ try:
 
         path = f"hrrrzarr/sfc/{date_str_smoke}/{date_str_smoke}_{hour_str_smoke}z_anl.zarr/8m_above_ground/MASSDEN"
 
-        ds_smoke = xr.open_mfdataset(
-            [lookup(path), lookup(f"{path}/8m_above_ground")],
-            engine="zarr",
-            chunks={}
-        )
+        # ds_smoke = xr.open_mfdataset(
+        #     [lookup(path), lookup(f"{path}/8m_above_ground")],
+        #     engine="zarr",
+        #     chunks={}
+        # )
+        ds = xr.open_mfdataset(
+          [lookup(path1), lookup(path2)],
+              engine="zarr",
+              chunks=None   # disable chunking
+          ).load()
         ds_smoke["SMOKE_ugm3"] = ds_smoke["MASSDEN"] * 1e9
 
         smoke_da = ds_smoke["SMOKE_ugm3"].rio.set_spatial_dims(
