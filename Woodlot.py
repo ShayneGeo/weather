@@ -21,7 +21,7 @@ from astral.sun import sun
 # ---------------------------
 # PAGE CONFIG & TITLE
 # ---------------------------
-st.set_page_config(layout="centered")
+#st.set_page_config(layout="centered")
 st.title("NOAA Weather + HRRR Forecast (Local Time)")
 
 # ----------------------------------
