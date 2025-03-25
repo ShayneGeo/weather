@@ -2063,104 +2063,206 @@ def lookup(path):
 # except Exception as e:
 #     st.error(f"Could not fetch or plot data for {date_str_smoke} {hour_str_smoke}Z: {e}")
 
-# --------------------------------------------------
-# 4. HRRR Smoke Visualization (MASSDEN)
-# --------------------------------------------------
-st.title("HRRR Smoke Visualization (MASSDEN)")
+# # --------------------------------------------------
+# # 4. HRRR Smoke Visualization (MASSDEN) THis atleast works but not with the states
+# # --------------------------------------------------
+# st.title("HRRR Smoke Visualization (MASSDEN)")
+
+# try:
+#     with st.spinner("Fetching and processing data..."):
+#         # Shift by 2 hours to find the latest available smoke data
+#         now_utc_smoke = datetime.datetime.utcnow() - datetime.timedelta(hours=2)
+#         date_str_smoke = now_utc_smoke.strftime("%Y%m%d")
+#         hour_str_smoke = f"{now_utc_smoke.hour:02d}"
+
+#         # S3 subdirectories for MASSDEN
+#         path1 = f"hrrrzarr/sfc/{date_str_smoke}/{date_str_smoke}_{hour_str_smoke}z_anl.zarr/8m_above_ground/MASSDEN"
+#         path2 = f"{path1}/8m_above_ground"
+
+#         ds_smoke = xr.open_zarr(
+#             lookup(path1),
+#             consolidated=False,
+#             decode_cf=True
+#         ).load()
+#         # If MASSDEN not found, try the second subdirectory
+#         if "MASSDEN" not in ds_smoke:
+#             ds_smoke = xr.open_zarr(
+#                 lookup(path2),
+#                 consolidated=False,
+#                 decode_cf=True
+#             ).load()
+
+#         # Convert MASSDEN -> micrograms/m³
+#         ds_smoke["SMOKE_ugm3"] = ds_smoke["MASSDEN"] * 1e9
+#         da_smoke = ds_smoke["SMOKE_ugm3"]
+
+#         # ---- IMPORTANT: rename dimension(s) to match the set_spatial_dims below.
+#         #     For example, if your dims are "x" and "y", do this:
+#         if "x" in da_smoke.dims and "y" in da_smoke.dims:
+#             da_smoke = da_smoke.rename({"x": "projection_x_coordinate",
+#                                         "y": "projection_y_coordinate"})
+
+#         # Now assign them as real coordinates so rioxarray sees them:
+#         # This step ensures "projection_x_coordinate" and "projection_y_coordinate"
+#         # are coordinates, not just dimension names.
+#         if "projection_x_coordinate" in da_smoke.dims:
+#             da_smoke = da_smoke.assign_coords(
+#                 projection_x_coordinate=da_smoke["projection_x_coordinate"]
+#             )
+#         if "projection_y_coordinate" in da_smoke.dims:
+#             da_smoke = da_smoke.assign_coords(
+#                 projection_y_coordinate=da_smoke["projection_y_coordinate"]
+#             )
+
+#         # Now mark them as the spatial dims & write the CRS
+#         da_smoke = da_smoke.rio.set_spatial_dims(
+#             x_dim="projection_x_coordinate",
+#             y_dim="projection_y_coordinate",
+#             inplace=False
+#         )
+#         da_smoke = da_smoke.rio.write_crs(
+#             "+proj=lcc +lat_1=38.5 +lat_2=38.5 +lat_0=38.5 +lon_0=-97.5 +x_0=0 +y_0=0 +datum=WGS84 +units=m +no_defs",
+#             inplace=False
+#         )
+
+#         # Now reproject
+#         smoke_da_reproj = da_smoke.rio.reproject("EPSG:5070")
+
+#         # Cleanup
+#         del ds_smoke
+#         gc.collect()
+
+#     with st.spinner("Rendering map..."):
+#         data = smoke_da_reproj.values
+#         left, bottom, right, top = smoke_da_reproj.rio.bounds()
+
+#         fig_smoke = plt.figure(figsize=(10, 8))
+#         ax_smoke = plt.axes(projection=ccrs.AlbersEqualArea(central_longitude=-96, central_latitude=37))
+#         ax_smoke.set_extent([left, right, bottom, top], crs=ccrs.epsg(5070))
+
+#         smoke_cmap = LinearSegmentedColormap.from_list(
+#             "smoke", ["#000000", "#800000", "#FF4500", "#FFD700"], N=256
+#         )
+
+#         ax_smoke.imshow(
+#             data,
+#             origin='upper',
+#             extent=(left, right, bottom, top),
+#             vmin=0,
+#             vmax=2,
+#             transform=ccrs.epsg(5070),
+#             cmap=smoke_cmap
+#         )
+#         ax_smoke.add_feature(cfeature.STATES, edgecolor='white', linewidth=10)
+#         ax_smoke.add_feature(cfeature.COASTLINE, edgecolor='white', linewidth=10)
+#         ax_smoke.set_title(f"HRRR Smoke - {date_str_smoke} {hour_str_smoke}Z")
+
+#         st.pyplot(fig_smoke)
+#         st.success("HRRR Smoke visualization completed!")
+
+# except Exception as e:
+#     st.error(f"Could not fetch or plot data for {date_str_smoke} {hour_str_smoke}Z: {str(e)}")
+#     raise
+
+import s3fs
+import xarray as xr
+import rioxarray
+import matplotlib.pyplot as plt
+import gc
+from datetime import datetime, timedelta
+import cartopy.crs as ccrs
+import cartopy.feature as cfeature
+import streamlit as st
+from matplotlib.colors import LinearSegmentedColormap
+import io
+
+# Anonymous S3
+s3 = s3fs.S3FileSystem(anon=True)
+
+def lookup(path):
+    return s3fs.S3Map(path, s3=s3)
+
+# Native HRRR Lambert Conformal Conic CRS
+native_crs = "+proj=lcc +lat_1=38.5 +lat_2=38.5 +lat_0=38.5 +lon_0=-97.5 +x_0=0 +y_0=0 +datum=WGS84 +units=m +no_defs"
+
+# Streamlit app
+st.title("HRRR Smoke Visualization")
+
+# Current date/time in UTC, minus 2 hours
+now_utc = datetime.utcnow() - timedelta(hours=2)
+date_str = now_utc.strftime("%Y%m%d")
+hour_str = f"{now_utc.hour:02d}"
+
+# S3 path for the HRRR-Smoke MASSDEN data
+path = f"hrrrzarr/sfc/{date_str}/{date_str}_{hour_str}z_anl.zarr/8m_above_ground/MASSDEN"
 
 try:
-    with st.spinner("Fetching and processing data..."):
-        # Shift by 2 hours to find the latest available smoke data
-        now_utc_smoke = datetime.datetime.utcnow() - datetime.timedelta(hours=2)
-        date_str_smoke = now_utc_smoke.strftime("%Y%m%d")
-        hour_str_smoke = f"{now_utc_smoke.hour:02d}"
+    # Open the dataset via Zarr
+    ds = xr.open_mfdataset(
+        [lookup(path), lookup(f"{path}/8m_above_ground")],
+        engine="zarr",
+        chunks={}
+    )
 
-        # S3 subdirectories for MASSDEN
-        path1 = f"hrrrzarr/sfc/{date_str_smoke}/{date_str_smoke}_{hour_str_smoke}z_anl.zarr/8m_above_ground/MASSDEN"
-        path2 = f"{path1}/8m_above_ground"
+    # Convert MASSDEN (kg/m³) to µg/m³
+    ds["SMOKE_ugm3"] = ds["MASSDEN"] * 1e9
 
-        ds_smoke = xr.open_zarr(
-            lookup(path1),
-            consolidated=False,
-            decode_cf=True
-        ).load()
-        # If MASSDEN not found, try the second subdirectory
-        if "MASSDEN" not in ds_smoke:
-            ds_smoke = xr.open_zarr(
-                lookup(path2),
-                consolidated=False,
-                decode_cf=True
-            ).load()
+    # Set spatial dims and CRS
+    smoke_da = ds["SMOKE_ugm3"].rio.set_spatial_dims(
+        x_dim="projection_x_coordinate",
+        y_dim="projection_y_coordinate",
+        inplace=False
+    )
+    smoke_da = smoke_da.rio.write_crs(native_crs, inplace=False)
 
-        # Convert MASSDEN -> micrograms/m³
-        ds_smoke["SMOKE_ugm3"] = ds_smoke["MASSDEN"] * 1e9
-        da_smoke = ds_smoke["SMOKE_ugm3"]
+    # Reproject to EPSG:5070
+    smoke_da_reproj = smoke_da.rio.reproject("EPSG:5070")
 
-        # ---- IMPORTANT: rename dimension(s) to match the set_spatial_dims below.
-        #     For example, if your dims are "x" and "y", do this:
-        if "x" in da_smoke.dims and "y" in da_smoke.dims:
-            da_smoke = da_smoke.rename({"x": "projection_x_coordinate",
-                                        "y": "projection_y_coordinate"})
+    # Get the data array and bounds
+    data = smoke_da_reproj.values
+    left, bottom, right, top = smoke_da_reproj.rio.bounds()
 
-        # Now assign them as real coordinates so rioxarray sees them:
-        # This step ensures "projection_x_coordinate" and "projection_y_coordinate"
-        # are coordinates, not just dimension names.
-        if "projection_x_coordinate" in da_smoke.dims:
-            da_smoke = da_smoke.assign_coords(
-                projection_x_coordinate=da_smoke["projection_x_coordinate"]
-            )
-        if "projection_y_coordinate" in da_smoke.dims:
-            da_smoke = da_smoke.assign_coords(
-                projection_y_coordinate=da_smoke["projection_y_coordinate"]
-            )
+    # Clean up memory
+    ds.close()
+    del ds
+    gc.collect()
 
-        # Now mark them as the spatial dims & write the CRS
-        da_smoke = da_smoke.rio.set_spatial_dims(
-            x_dim="projection_x_coordinate",
-            y_dim="projection_y_coordinate",
-            inplace=False
-        )
-        da_smoke = da_smoke.rio.write_crs(
-            "+proj=lcc +lat_1=38.5 +lat_2=38.5 +lat_0=38.5 +lon_0=-97.5 +x_0=0 +y_0=0 +datum=WGS84 +units=m +no_defs",
-            inplace=False
-        )
+    # Create the plot
+    fig = plt.figure(figsize=(10, 8))
+    ax = plt.axes(projection=ccrs.AlbersEqualArea(central_longitude=-96, central_latitude=37))
+    ax.set_extent([left, right, bottom, top], crs=ccrs.epsg(5070))
 
-        # Now reproject
-        smoke_da_reproj = da_smoke.rio.reproject("EPSG:5070")
+    # Define custom colormap
+    smoke_cmap = LinearSegmentedColormap.from_list(
+        "smoke",
+        ["#000000", "#800000", "#FF4500", "#FFD700"],  # black → maroon → orange → gold
+        N=256
+    )
 
-        # Cleanup
-        del ds_smoke
-        gc.collect()
+    # Plot the data
+    ax.imshow(
+        data,
+        origin='upper',
+        extent=(left, right, bottom, top),
+        vmin=0,
+        vmax=2,
+        transform=ccrs.epsg(5070),
+        cmap=smoke_cmap
+    )
 
-    with st.spinner("Rendering map..."):
-        data = smoke_da_reproj.values
-        left, bottom, right, top = smoke_da_reproj.rio.bounds()
+    # Add features
+    ax.add_feature(cfeature.STATES, edgecolor='white', linewidth=1)
+    ax.add_feature(cfeature.COASTLINE, linewidth=1, edgecolor='white')
 
-        fig_smoke = plt.figure(figsize=(10, 8))
-        ax_smoke = plt.axes(projection=ccrs.AlbersEqualArea(central_longitude=-96, central_latitude=37))
-        ax_smoke.set_extent([left, right, bottom, top], crs=ccrs.epsg(5070))
+    # Set title
+    ax.set_title(f"HRRR Smoke - {date_str} {hour_str}Z")
 
-        smoke_cmap = LinearSegmentedColormap.from_list(
-            "smoke", ["#000000", "#800000", "#FF4500", "#FFD700"], N=256
-        )
-
-        ax_smoke.imshow(
-            data,
-            origin='upper',
-            extent=(left, right, bottom, top),
-            vmin=0,
-            vmax=2,
-            transform=ccrs.epsg(5070),
-            cmap=smoke_cmap
-        )
-        ax_smoke.add_feature(cfeature.STATES, edgecolor='white', linewidth=10)
-        ax_smoke.add_feature(cfeature.COASTLINE, edgecolor='white', linewidth=10)
-        ax_smoke.set_title(f"HRRR Smoke - {date_str_smoke} {hour_str_smoke}Z")
-
-        st.pyplot(fig_smoke)
-        st.success("HRRR Smoke visualization completed!")
+    # Display in Streamlit
+    buf = io.BytesIO()
+    plt.savefig(buf, format='png', bbox_inches='tight')
+    buf.seek(0)
+    st.image(buf, caption=f"Smoke Concentration (µg/m³) at {date_str} {hour_str}Z")
+    plt.close()
 
 except Exception as e:
-    st.error(f"Could not fetch or plot data for {date_str_smoke} {hour_str_smoke}Z: {str(e)}")
-    raise
-
+    st.error(f"Could not fetch or plot data for {date_str} {hour_str}Z: {e}")
