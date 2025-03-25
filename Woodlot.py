@@ -2194,7 +2194,7 @@ date_str = now_utc.strftime("%Y%m%d")
 hour_str = f"{now_utc.hour:02d}"
 
 # S3 path for the HRRR-Smoke MASSDEN data
-path = f"hrrrzarr/sfc/{date_str}/{date_str}_{hour_str}z_anl.zarr/8m_above_ground/MASSDEN"
+path = f"hrrrzarr/sfc/{date_str}/{date_str}_{hour_str}z_anl.zarr/8m_above_ground/MASSDEN/8m_above_ground"
 
 try:
     # Open the dataset via Zarr
