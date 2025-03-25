@@ -1913,12 +1913,12 @@ st.title("NOAA Weather + HRRR Forecast (Local Time)")
 #     st.pyplot(fig3)
 #     st.success("HRRR Relative Humidity (%) forecasts (Local Time)!")
 
-# # --------------------------------------------------
-# # 3. Button to Generate HRRR Wind Gust GIF
-# # --------------------------------------------------
-# s3 = s3fs.S3FileSystem(anon=True)
-# def lookup(path):
-#     return s3fs.S3Map(path, s3=s3)
+# --------------------------------------------------
+# 3. Button to Generate HRRR Wind Gust GIF
+# --------------------------------------------------
+s3 = s3fs.S3FileSystem(anon=True)
+def lookup(path):
+    return s3fs.S3Map(path, s3=s3)
 
 # utc_tz = pytz.utc
 # mountain_tz = pytz.timezone("America/Los_Angeles")
