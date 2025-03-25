@@ -2201,8 +2201,8 @@ def fetch_and_process_data(date_str, hour_str):
         # Open dataset
         ds = xr.open_mfdataset(
             [lookup(path), lookup(f"{path}/8m_above_ground")],
-            engine="zarr",
-            chunks={}
+            engine="zarr"#,
+            #chunks={}
         )
 
         # Convert MASSDEN to µg/m³
