@@ -2165,8 +2165,6 @@ def lookup(path):
 #     raise
 
 import streamlit as st
-st.set_page_config(layout="wide")
-
 import s3fs
 import xarray as xr
 import rioxarray
@@ -2179,76 +2177,80 @@ import cartopy.crs as ccrs
 import cartopy.feature as cfeature
 from matplotlib.colors import LinearSegmentedColormap
 
-# Anonymous S3 and helper function
+# Streamlit app setup
+st.title("HRRR Smoke Visualization")
+
+# Anonymous S3 setup
 s3 = s3fs.S3FileSystem(anon=True)
+
 def lookup(path):
     return s3fs.S3Map(path, s3=s3)
 
-# Native HRRR Lambert Conformal Conic CRS string
-native_crs = (
-    "+proj=lcc +lat_1=38.5 +lat_2=38.5 +lat_0=38.5 "
-    "+lon_0=-97.5 +x_0=0 +y_0=0 +datum=WGS84 +units=m +no_defs"
-)
+# Native HRRR Lambert Conformal Conic CRS
+native_crs = "+proj=lcc +lat_1=38.5 +lat_2=38.5 +lat_0=38.5 +lon_0=-97.5 +x_0=0 +y_0=0 +datum=WGS84 +units=m +no_defs"
 
-# Get the most recent HRRR run time (UTC minus 2 hours)
-now_utc = datetime.utcnow() - timedelta(hours=2)
-date_str = now_utc.strftime("%Y%m%d")
-hour_str = f"{now_utc.hour:02d}"
+# Local output directory
+output_dir = "HRRR_Smoke_Output"
+os.makedirs(output_dir, exist_ok=True)
 
-st.title("HRRR Smoke Visualization (MASSDEN)")
-
-try:
-    with st.spinner("Fetching and processing data..."):
-        # Construct S3 paths for MASSDEN; note that some HRRR data stores split the data into two subdirectories.
-        path1 = f"hrrrzarr/sfc/{date_str}/{date_str}_{hour_str}z_anl.zarr/8m_above_ground/MASSDEN"
-        path2 = f"{path1}/8m_above_ground"
-
-        # Open the dataset from both subdirectories with no chunking and load into memory.
-        ds_smoke = xr.open_mfdataset(
-            [lookup(path1), lookup(path2)],
+# Function to fetch and process data
+def fetch_and_process_data(date_str, hour_str):
+    path = f"hrrrzarr/sfc/{date_str}/{date_str}_{hour_str}z_anl.zarr/8m_above_ground/MASSDEN"
+    
+    try:
+        # Open dataset
+        ds = xr.open_mfdataset(
+            [lookup(path), lookup(f"{path}/8m_above_ground")],
             engine="zarr",
-            chunks=None
-        ).load()
+            chunks={}
+        )
 
-        # Convert MASSDEN (kg/m³) to micrograms per cubic meter (µg/m³)
-        ds_smoke["SMOKE_ugm3"] = ds_smoke["MASSDEN"] * 1e9
+        # Convert MASSDEN to µg/m³
+        ds["SMOKE_ugm3"] = ds["MASSDEN"] * 1e9
 
-        # Set spatial dimensions and assign CRS; if your data has dims 'x' and 'y', you may need to rename them.
-        # For this example we assume the data already contains the coordinate arrays named
-        # "projection_x_coordinate" and "projection_y_coordinate".
-        smoke_da = ds_smoke["SMOKE_ugm3"].rio.set_spatial_dims(
+        # Set spatial dimensions and CRS
+        smoke_da = ds["SMOKE_ugm3"].rio.set_spatial_dims(
             x_dim="projection_x_coordinate",
             y_dim="projection_y_coordinate",
             inplace=False
         )
         smoke_da = smoke_da.rio.write_crs(native_crs, inplace=False)
 
-        # Reproject the data to EPSG:5070 (you can change this if needed)
+        # Reproject to EPSG:5070
         smoke_da_reproj = smoke_da.rio.reproject("EPSG:5070")
 
-        # Clean up the dataset to free memory
-        ds_smoke.close()
-        del ds_smoke
+        # Write to GeoTIFF
+        output_tif = os.path.join(output_dir, f"HRRR_Smoke_{date_str}_{hour_str}Z.tif")
+        smoke_da_reproj.rio.to_raster(output_tif)
+
+        # Clean up
+        ds.close()
+        del ds
         gc.collect()
 
-    with st.spinner("Rendering map..."):
-        # Extract the data and spatial bounds
-        data = smoke_da_reproj.values
-        left, bottom, right, top = smoke_da_reproj.rio.bounds()
+        return output_tif
+    except Exception as e:
+        st.error(f"Could not fetch or process data for {date_str} {hour_str}Z: {e}")
+        return None
 
-        # Create a figure with Cartopy using an Albers Equal Area projection
+# Function to plot data
+def plot_data(tif_path, date_str, hour_str):
+    with rasterio.open(tif_path) as src:
+        data = src.read(1)
+        left, bottom, right, top = src.bounds
+
         fig = plt.figure(figsize=(10, 8))
         ax = plt.axes(projection=ccrs.AlbersEqualArea(central_longitude=-96, central_latitude=37))
         ax.set_extent([left, right, bottom, top], crs=ccrs.epsg(5070))
 
-        # Define a custom smoke colormap (black → maroon → orange → gold)
+        # Define custom colormap
         smoke_cmap = LinearSegmentedColormap.from_list(
             "smoke",
-            ["#000000", "#800000", "#FF4500", "#FFD700"],
+            ["#000000", "#800000", "#FF4500", "#FFD700"],  # black → maroon → orange → gold
             N=256
         )
 
-        # Plot the smoke data; vmin and vmax may be adjusted as needed.
+        # Plot raster
         ax.imshow(
             data,
             origin='upper',
@@ -2259,11 +2261,33 @@ try:
             cmap=smoke_cmap
         )
 
-        # Add state boundaries and coastlines in white
+        # Add features
         ax.add_feature(cfeature.STATES, edgecolor='white', linewidth=1)
-        ax.add_feature(cfeature.COASTLINE, edgecolor='white', linewidth=1)
+        ax.add_feature(cfeature.COASTLINE, linewidth=1, edgecolor='white')
 
         ax.set_title(f"HRRR Smoke - {date_str} {hour_str}Z")
-
         st.pyplot(fig)
-        st.success("HRRR Smoke visualization completed!")
+        plt.close(fig)
+
+# UI for date and hour selection
+now_utc = datetime.utcnow() - timedelta(hours=2)
+default_date = now_utc.date()
+default_hour = now_utc.hour
+
+date = st.date_input("Select Date", value=default_date, min_value=default_date - timedelta(days=7), max_value=default_date)
+hour = st.slider("Select Hour (UTC)", 0, 23, default_hour)
+
+date_str = date.strftime("%Y%m%d")
+hour_str = f"{hour:02d}"
+
+# Button to generate map
+if st.button("Generate Smoke Map"):
+    with st.spinner("Fetching and processing data..."):
+        tif_path = fetch_and_process_data(date_str, hour_str)
+        if tif_path:
+            st.success(f"Data processed successfully for {date_str} {hour_str}Z")
+            with st.spinner("Generating visualization..."):
+                plot_data(tif_path, date_str, hour_str)
+
+# Optional: Clean up directory info
+st.write(f"Output files are saved in: {output_dir}")
