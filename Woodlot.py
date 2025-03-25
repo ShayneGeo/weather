@@ -701,7 +701,7 @@ if 'smoke_data' in locals():
         try:
             fig = plt.figure(figsize=(10, 8))
             ax = plt.axes(projection=ccrs.AlbersEqualArea(central_longitude=-96, central_latitude=37))
-            ax.set_extent([left, right, bottom, top], crs=ccrs.epsg(5070))
+            ax.set_extent([left, right, bottom, top], crs=ccrs.epsg(4326))
             smoke_cmap = LinearSegmentedColormap.from_list(
                 "smoke", ["#000000", "#800000", "#FF4500", "#FFD700"], N=256
             )
