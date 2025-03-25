@@ -2170,6 +2170,7 @@ st.set_page_config(layout="wide")
 import s3fs
 import xarray as xr
 import rioxarray
+import rasterio
 import matplotlib.pyplot as plt
 import os
 import gc
@@ -2198,53 +2199,40 @@ st.title("HRRR Smoke Visualization (MASSDEN)")
 
 try:
     with st.spinner("Fetching and processing data..."):
-        # Construct S3 paths for MASSDEN (the data may be split across two subdirectories)
+        # Construct S3 paths for MASSDEN; note that some HRRR data stores split the data into two subdirectories.
         path1 = f"hrrrzarr/sfc/{date_str}/{date_str}_{hour_str}z_anl.zarr/8m_above_ground/MASSDEN"
         path2 = f"{path1}/8m_above_ground"
 
-        # Try to open the dataset using open_zarr (which does not use Dask)
-        try:
-            ds_smoke = xr.open_zarr(lookup(path1), chunks=None).load()#, engine="zarr"
-        except Exception as e:
-            st.write("Error reading path1, trying path2...", e)
-            ds_smoke = xr.open_zarr(lookup(path2), chunks=None).load()#, engine="zarr"
+        # Open the dataset from both subdirectories with no chunking and load into memory.
+        ds_smoke = xr.open_mfdataset(
+            [lookup(path1), lookup(path2)],
+            engine="zarr",
+            chunks=None
+        ).load()
 
         # Convert MASSDEN (kg/m³) to micrograms per cubic meter (µg/m³)
         ds_smoke["SMOKE_ugm3"] = ds_smoke["MASSDEN"] * 1e9
-        da_smoke = ds_smoke["SMOKE_ugm3"]
 
-        # If the data uses dims "x" and "y", rename them to the projection dims we need:
-        if "x" in da_smoke.dims and "y" in da_smoke.dims:
-            da_smoke = da_smoke.rename({"x": "projection_x_coordinate", "y": "projection_y_coordinate"})
-
-        # Ensure these dimensions are actually coordinates
-        if "projection_x_coordinate" in da_smoke.dims:
-            da_smoke = da_smoke.assign_coords(
-                projection_x_coordinate=da_smoke["projection_x_coordinate"]
-            )
-        if "projection_y_coordinate" in da_smoke.dims:
-            da_smoke = da_smoke.assign_coords(
-                projection_y_coordinate=da_smoke["projection_y_coordinate"]
-            )
-
-        # Set the spatial dimensions and write the CRS
-        da_smoke = da_smoke.rio.set_spatial_dims(
+        # Set spatial dimensions and assign CRS; if your data has dims 'x' and 'y', you may need to rename them.
+        # For this example we assume the data already contains the coordinate arrays named
+        # "projection_x_coordinate" and "projection_y_coordinate".
+        smoke_da = ds_smoke["SMOKE_ugm3"].rio.set_spatial_dims(
             x_dim="projection_x_coordinate",
             y_dim="projection_y_coordinate",
             inplace=False
         )
-        da_smoke = da_smoke.rio.write_crs(native_crs, inplace=False)
+        smoke_da = smoke_da.rio.write_crs(native_crs, inplace=False)
 
-        # Reproject to EPSG:5070
-        smoke_da_reproj = da_smoke.rio.reproject("EPSG:5070")
+        # Reproject the data to EPSG:5070 (you can change this if needed)
+        smoke_da_reproj = smoke_da.rio.reproject("EPSG:5070")
 
-        # Cleanup
+        # Clean up the dataset to free memory
         ds_smoke.close()
         del ds_smoke
         gc.collect()
 
     with st.spinner("Rendering map..."):
-        # Get data and spatial bounds
+        # Extract the data and spatial bounds
         data = smoke_da_reproj.values
         left, bottom, right, top = smoke_da_reproj.rio.bounds()
 
@@ -2260,7 +2248,7 @@ try:
             N=256
         )
 
-        # Plot the smoke data; adjust vmin/vmax as needed
+        # Plot the smoke data; vmin and vmax may be adjusted as needed.
         ax.imshow(
             data,
             origin='upper',
@@ -2276,9 +2264,6 @@ try:
         ax.add_feature(cfeature.COASTLINE, edgecolor='white', linewidth=1)
 
         ax.set_title(f"HRRR Smoke - {date_str} {hour_str}Z")
+
         st.pyplot(fig)
         st.success("HRRR Smoke visualization completed!")
-
-except Exception as e:
-    st.error(f"Could not fetch or plot data for {date_str} {hour_str}Z: {str(e)}")
-
