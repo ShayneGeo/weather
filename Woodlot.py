@@ -522,97 +522,97 @@ if st.button("Generate HRRR Wind Gust GIF"):
             st.error("No frames were generated. GIF not created.")
 
 
-import streamlit as st
-st.set_page_config(layout="wide")
+# import streamlit as st
+# st.set_page_config(layout="wide")
 
-import s3fs
-import xarray as xr
-import rioxarray
-import rasterio
-import matplotlib.pyplot as plt
-import os
-import gc
-from datetime import datetime, timedelta
-import cartopy.crs as ccrs
-import cartopy.feature as cfeature
-from matplotlib.colors import LinearSegmentedColormap
+# import s3fs
+# import xarray as xr
+# import rioxarray
+# import rasterio
+# import matplotlib.pyplot as plt
+# import os
+# import gc
+# from datetime import datetime, timedelta
+# import cartopy.crs as ccrs
+# import cartopy.feature as cfeature
+# from matplotlib.colors import LinearSegmentedColormap
 
-# Anonymous S3
-s3 = s3fs.S3FileSystem(anon=True)
-def lookup(path):
-    return s3fs.S3Map(path, s3=s3)
+# # Anonymous S3
+# s3 = s3fs.S3FileSystem(anon=True)
+# def lookup(path):
+#     return s3fs.S3Map(path, s3=s3)
 
-# Native HRRR Lambert Conformal Conic CRS
-native_crs = "+proj=lcc +lat_1=38.5 +lat_2=38.5 +lat_0=38.5 +lon_0=-97.5 +x_0=0 +y_0=0 +datum=WGS84 +units=m +no_defs"
+# # Native HRRR Lambert Conformal Conic CRS
+# native_crs = "+proj=lcc +lat_1=38.5 +lat_2=38.5 +lat_0=38.5 +lon_0=-97.5 +x_0=0 +y_0=0 +datum=WGS84 +units=m +no_defs"
 
-# Current date/time in UTC, minus 2 hours
-now_utc = datetime.utcnow() - timedelta(hours=2)
-date_str = now_utc.strftime("%Y%m%d")
-hour_str = f"{now_utc.hour:02d}"
+# # Current date/time in UTC, minus 2 hours
+# now_utc = datetime.utcnow() - timedelta(hours=2)
+# date_str = now_utc.strftime("%Y%m%d")
+# hour_str = f"{now_utc.hour:02d}"
 
-# S3 path for the HRRR Smoke MASSDEN data
-path = f"hrrrzarr/sfc/{date_str}/{date_str}_{hour_str}z_anl.zarr/8m_above_ground/MASSDEN"
+# # S3 path for the HRRR Smoke MASSDEN data
+# path = f"hrrrzarr/sfc/{date_str}/{date_str}_{hour_str}z_anl.zarr/8m_above_ground/MASSDEN"
 
-# Local output directory
-output_dir = r"C:\Users\magst\Desktop\HRRR\GIF\GLASS_SMOKE2"
-os.makedirs(output_dir, exist_ok=True)
+# # Local output directory
+# output_dir = r"C:\Users\magst\Desktop\HRRR\GIF\GLASS_SMOKE2"
+# os.makedirs(output_dir, exist_ok=True)
 
-st.title("HRRR Smoke Visualization (MASSDEN)")
+# st.title("HRRR Smoke Visualization (MASSDEN)")
 
-try:
-    with st.spinner("Fetching and processing data..."):
-        ds = xr.open_mfdataset(
-            [lookup(path), lookup(f"{path}/8m_above_ground")],
-            engine="zarr",
-            chunks={}
-        )
-        ds["SMOKE_ugm3"] = ds["MASSDEN"] * 1e9
+# try:
+#     with st.spinner("Fetching and processing data..."):
+#         ds = xr.open_mfdataset(
+#             [lookup(path), lookup(f"{path}/8m_above_ground")],
+#             engine="zarr",
+#             chunks={}
+#         )
+#         ds["SMOKE_ugm3"] = ds["MASSDEN"] * 1e9
 
-        smoke_da = ds["SMOKE_ugm3"].rio.set_spatial_dims(
-            x_dim="projection_x_coordinate",
-            y_dim="projection_y_coordinate",
-            inplace=False
-        ).rio.write_crs(native_crs, inplace=False)
-        smoke_da_reproj = smoke_da.rio.reproject("EPSG:5070")
+#         smoke_da = ds["SMOKE_ugm3"].rio.set_spatial_dims(
+#             x_dim="projection_x_coordinate",
+#             y_dim="projection_y_coordinate",
+#             inplace=False
+#         ).rio.write_crs(native_crs, inplace=False)
+#         smoke_da_reproj = smoke_da.rio.reproject("EPSG:5070")
 
-        output_tif = os.path.join(output_dir, f"HRRR_Smoke_{date_str}_{hour_str}Z.tif")
-        smoke_da_reproj.rio.to_raster(output_tif)
+#         output_tif = os.path.join(output_dir, f"HRRR_Smoke_{date_str}_{hour_str}Z.tif")
+#         smoke_da_reproj.rio.to_raster(output_tif)
 
-        ds.close()
-        del ds
-        gc.collect()
+#         ds.close()
+#         del ds
+#         gc.collect()
 
-    with st.spinner("Rendering map..."):
-        with rasterio.open(output_tif) as src:
-            data = src.read(1)
-            left, bottom, right, top = src.bounds
+#     with st.spinner("Rendering map..."):
+#         with rasterio.open(output_tif) as src:
+#             data = src.read(1)
+#             left, bottom, right, top = src.bounds
 
-            fig = plt.figure(figsize=(10, 8))
-            ax = plt.axes(projection=ccrs.AlbersEqualArea(central_longitude=-96, central_latitude=37))
-            ax.set_extent([left, right, bottom, top], crs=ccrs.epsg(5070))
+#             fig = plt.figure(figsize=(10, 8))
+#             ax = plt.axes(projection=ccrs.AlbersEqualArea(central_longitude=-96, central_latitude=37))
+#             ax.set_extent([left, right, bottom, top], crs=ccrs.epsg(5070))
 
-            smoke_cmap = LinearSegmentedColormap.from_list(
-                "smoke",
-                ["#000000", "#800000", "#FF4500", "#FFD700"],
-                N=256
-            )
+#             smoke_cmap = LinearSegmentedColormap.from_list(
+#                 "smoke",
+#                 ["#000000", "#800000", "#FF4500", "#FFD700"],
+#                 N=256
+#             )
 
-            ax.imshow(
-                data,
-                origin='upper',
-                extent=(left, right, bottom, top),
-                vmin=0,
-                vmax=2,
-                transform=ccrs.epsg(5070),
-                cmap=smoke_cmap
-            )
-            ax.add_feature(cfeature.STATES, edgecolor='white', linewidth=1)
-            ax.add_feature(cfeature.COASTLINE, linewidth=1, edgecolor='white')
-            ax.set_title(f"HRRR Smoke - {date_str} {hour_str}Z")
+#             ax.imshow(
+#                 data,
+#                 origin='upper',
+#                 extent=(left, right, bottom, top),
+#                 vmin=0,
+#                 vmax=2,
+#                 transform=ccrs.epsg(5070),
+#                 cmap=smoke_cmap
+#             )
+#             ax.add_feature(cfeature.STATES, edgecolor='white', linewidth=1)
+#             ax.add_feature(cfeature.COASTLINE, linewidth=1, edgecolor='white')
+#             ax.set_title(f"HRRR Smoke - {date_str} {hour_str}Z")
 
-            st.pyplot(fig)
-except Exception as e:
-    st.error(f"Could not fetch or plot data for {date_str} {hour_str}Z: {e}")
+#             st.pyplot(fig)
+# except Exception as e:
+#     st.error(f"Could not fetch or plot data for {date_str} {hour_str}Z: {e}")
 
 
 
