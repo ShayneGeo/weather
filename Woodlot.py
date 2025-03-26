@@ -2214,8 +2214,8 @@ def main():
         #     engine="zarr",
         #     chunks={}
         # )
-        ds1 = xr.open_zarr(lookup(path), engine="zarr")
-        ds2 = xr.open_zarr(lookup(f"{path}/8m_above_ground"), engine="zarr")
+        ds1 = xr.open_zarr(lookup(path))#, engine="zarr")
+        ds2 = xr.open_zarr(lookup(f"{path}/8m_above_ground"))#, engine="zarr")
         ds = xr.merge([ds1, ds2])
 
 
