@@ -2240,6 +2240,119 @@ with st.spinner("Retrieving NOAA forecast..."):
 # ---------------------------
 # HRRR Forecast Retrieval (Last 5 Cycles)
 # ---------------------------
+# with st.spinner("Retrieving last 5 HRRR forecast cycles..."):
+#     tz_finder = TimezoneFinder()
+#     local_tz_name = tz_finder.timezone_at(lng=default_lon, lat=default_lat)
+#     if local_tz_name is None:
+#         local_tz_name = "UTC"
+#     local_tz = pytz.timezone(local_tz_name)
+#     now_rounded_utc = datetime.utcnow().replace(minute=0, second=0, microsecond=0, tzinfo=pytz.utc)
+#     now_local = now_rounded_utc.astimezone(local_tz)
+#     hour_block = (now_rounded_utc.hour // 6) * 6
+#     current_cycle_time_utc = now_rounded_utc.replace(hour=hour_block)
+#     cycle_times_utc = [current_cycle_time_utc - timedelta(hours=6 * i) for i in range(5)]
+#     cycle_times_utc.reverse()
+
+#     level_surface = '2m_above_ground'
+#     var_gust = 'GUST'
+#     var_temp = 'TMP'
+#     level_rh = '2m_above_ground'
+#     var_rh = 'RH'
+
+#     fs = s3fs.S3FileSystem(anon=True)
+#     chunk_index = xr.open_zarr(s3fs.S3Map("s3://hrrrzarr/grid/HRRR_chunk_index.zarr", s3=fs))
+
+#     projection = ccrs.LambertConformal(
+#         central_longitude=262.5,
+#         central_latitude=38.5,
+#         standard_parallels=(38.5, 38.5),
+#         globe=ccrs.Globe(semimajor_axis=6371229, semiminor_axis=6371229)
+#     )
+#     x, y = projection.transform_point(default_lon, default_lat, ccrs.PlateCarree())
+#     nearest_point = chunk_index.sel(x=x, y=y, method="nearest")
+#     fcst_chunk_id = f"0.{nearest_point.chunk_id.values}"
+
+#     def retrieve_data(s3_url):
+#         with fs.open(s3_url, 'rb') as compressed_data:
+#             buffer = ncd.blosc.decompress(compressed_data.read())
+#         dtype = "<f4"
+#         chunk = np.frombuffer(buffer, dtype=dtype)
+#         entry_size = 150 * 150
+#         num_entries = len(chunk) // entry_size
+#         if num_entries == 1:
+#             data_array = np.reshape(chunk, (150, 150))
+#         else:
+#             data_array = np.reshape(chunk, (num_entries, 150, 150))
+#         return data_array
+
+#     # GUST Retrieval
+#     all_forecast_gust = []
+#     for init_time_utc in cycle_times_utc:
+#         run_date_str = init_time_utc.strftime("%Y%m%d")
+#         run_hr_str = init_time_utc.strftime("%H")
+#         fcst_url = (
+#             f"hrrrzarr/sfc/{run_date_str}/"
+#             f"{run_date_str}_{run_hr_str}z_fcst.zarr/{level_surface}/{var_gust}/{level_surface}/{var_gust}/"
+#         )
+#         try:
+#             forecast_data = retrieve_data(fcst_url + fcst_chunk_id)
+#         except Exception as e:
+#             print(f"Error retrieving GUST for {init_time_utc} -> {e}")
+#             continue
+#         num_fcst_hours = forecast_data.shape[0]
+#         valid_times_utc = [
+#             (init_time_utc + timedelta(hours=i)).replace(tzinfo=pytz.utc)
+#             for i in range(num_fcst_hours)
+#         ]
+#         valid_times_local = [vt.astimezone(local_tz) for vt in valid_times_utc]
+#         forecast_values = forecast_data[:, nearest_point.in_chunk_y, nearest_point.in_chunk_x]
+#         all_forecast_gust.append((init_time_utc, valid_times_local, forecast_values))
+
+#     # TMP Retrieval
+#     all_forecast_tmp = []
+#     for init_time_utc in cycle_times_utc:
+#         run_date_str = init_time_utc.strftime("%Y%m%d")
+#         run_hr_str = init_time_utc.strftime("%H")
+#         fcst_url = (
+#             f"hrrrzarr/sfc/{run_date_str}/"
+#             f"{run_date_str}_{run_hr_str}z_fcst.zarr/{level_surface}/{var_temp}/{level_surface}/{var_temp}/"
+#         )
+#         try:
+#             forecast_data = retrieve_data(fcst_url + fcst_chunk_id)
+#         except Exception as e:
+#             print(f"Error retrieving TMP for {init_time_utc} -> {e}")
+#             continue
+#         num_fcst_hours = forecast_data.shape[0]
+#         valid_times_utc = [
+#             (init_time_utc + timedelta(hours=i)).replace(tzinfo=pytz.utc)
+#             for i in range(num_fcst_hours)
+#         ]
+#         valid_times_local = [vt.astimezone(local_tz) for vt in valid_times_utc]
+#         forecast_values = forecast_data[:, nearest_point.in_chunk_y, nearest_point.in_chunk_x]
+#         all_forecast_tmp.append((init_time_utc, valid_times_local, forecast_values))
+
+#     # RH Retrieval
+#     all_forecast_rh = []
+#     for init_time_utc in cycle_times_utc:
+#         run_date_str = init_time_utc.strftime("%Y%m%d")
+#         run_hr_str = init_time_utc.strftime("%H")
+#         fcst_url = (
+#             f"hrrrzarr/sfc/{run_date_str}/"
+#             f"{run_date_str}_{run_hr_str}z_fcst.zarr/{level_rh}/{var_rh}/{level_rh}/{var_rh}/"
+#         )
+#         try:
+#             forecast_data = retrieve_data(fcst_url + fcst_chunk_id)
+#         except Exception as e:
+#             print(f"Error retrieving RH for {init_time_utc} -> {e}")
+#             continue
+#         num_fcst_hours = forecast_data.shape[0]
+#         valid_times_utc = [
+#             (init_time_utc + timedelta(hours=i)).replace(tzinfo=pytz.utc)
+#             for i in range(num_fcst_hours)
+#         ]
+#         valid_times_local = [vt.astimezone(local_tz) for vt in valid_times_utc]
+#         forecast_values = forecast_data[:, nearest_point.in_chunk_y, nearest_point.in_chunk_x]
+#         all_forecast_rh.append((init_time_utc, valid_times_local, forecast_values))
 with st.spinner("Retrieving last 5 HRRR forecast cycles..."):
     tz_finder = TimezoneFinder()
     local_tz_name = tz_finder.timezone_at(lng=default_lon, lat=default_lat)
@@ -2253,10 +2366,13 @@ with st.spinner("Retrieving last 5 HRRR forecast cycles..."):
     cycle_times_utc = [current_cycle_time_utc - timedelta(hours=6 * i) for i in range(5)]
     cycle_times_utc.reverse()
 
-    level_surface = '2m_above_ground'
+    # Define levels for variables: GUST at surface, TMP and RH at 2m_above_ground
+    level_gust = 'surface'
+    level_temp = '2m_above_ground'
+    level_rh = '2m_above_ground'
+
     var_gust = 'GUST'
     var_temp = 'TMP'
-    level_rh = '2m_above_ground'
     var_rh = 'RH'
 
     fs = s3fs.S3FileSystem(anon=True)
@@ -2285,14 +2401,14 @@ with st.spinner("Retrieving last 5 HRRR forecast cycles..."):
             data_array = np.reshape(chunk, (num_entries, 150, 150))
         return data_array
 
-    # GUST Retrieval
+    # GUST Retrieval using surface level
     all_forecast_gust = []
     for init_time_utc in cycle_times_utc:
         run_date_str = init_time_utc.strftime("%Y%m%d")
         run_hr_str = init_time_utc.strftime("%H")
         fcst_url = (
             f"hrrrzarr/sfc/{run_date_str}/"
-            f"{run_date_str}_{run_hr_str}z_fcst.zarr/{level_surface}/{var_gust}/{level_surface}/{var_gust}/"
+            f"{run_date_str}_{run_hr_str}z_fcst.zarr/{level_gust}/{var_gust}/{level_gust}/{var_gust}/"
         )
         try:
             forecast_data = retrieve_data(fcst_url + fcst_chunk_id)
@@ -2308,14 +2424,14 @@ with st.spinner("Retrieving last 5 HRRR forecast cycles..."):
         forecast_values = forecast_data[:, nearest_point.in_chunk_y, nearest_point.in_chunk_x]
         all_forecast_gust.append((init_time_utc, valid_times_local, forecast_values))
 
-    # TMP Retrieval
+    # TMP Retrieval using 2m_above_ground level
     all_forecast_tmp = []
     for init_time_utc in cycle_times_utc:
         run_date_str = init_time_utc.strftime("%Y%m%d")
         run_hr_str = init_time_utc.strftime("%H")
         fcst_url = (
             f"hrrrzarr/sfc/{run_date_str}/"
-            f"{run_date_str}_{run_hr_str}z_fcst.zarr/{level_surface}/{var_temp}/{level_surface}/{var_temp}/"
+            f"{run_date_str}_{run_hr_str}z_fcst.zarr/{level_temp}/{var_temp}/{level_temp}/{var_temp}/"
         )
         try:
             forecast_data = retrieve_data(fcst_url + fcst_chunk_id)
@@ -2331,7 +2447,7 @@ with st.spinner("Retrieving last 5 HRRR forecast cycles..."):
         forecast_values = forecast_data[:, nearest_point.in_chunk_y, nearest_point.in_chunk_x]
         all_forecast_tmp.append((init_time_utc, valid_times_local, forecast_values))
 
-    # RH Retrieval
+    # RH Retrieval using 2m_above_ground level
     all_forecast_rh = []
     for init_time_utc in cycle_times_utc:
         run_date_str = init_time_utc.strftime("%Y%m%d")
