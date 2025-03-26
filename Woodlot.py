@@ -2253,7 +2253,7 @@ with st.spinner("Retrieving last 5 HRRR forecast cycles..."):
     cycle_times_utc = [current_cycle_time_utc - timedelta(hours=6 * i) for i in range(5)]
     cycle_times_utc.reverse()
 
-    level_surface = 'surface'
+    level_surface = '2m_above_ground'
     var_gust = 'GUST'
     var_temp = 'TMP'
     level_rh = '2m_above_ground'
