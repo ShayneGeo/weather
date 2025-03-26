@@ -2209,11 +2209,15 @@ def main():
 
     try:
         # Open the dataset via Zarr
-        ds = xr.open_mfdataset(
-            [lookup(path), lookup(f"{path}/8m_above_ground")],
-            engine="zarr",
-            chunks={}
-        )
+        # ds = xr.open_mfdataset(
+        #     [lookup(path), lookup(f"{path}/8m_above_ground")],
+        #     engine="zarr",
+        #     chunks={}
+        # )
+        ds1 = xr.open_zarr(lookup(path), engine="zarr")
+        ds2 = xr.open_zarr(lookup(f"{path}/8m_above_ground"), engine="zarr")
+        ds = xr.merge([ds1, ds2])
+
 
         # Convert MASSDEN (kg/m³) to µg/m³
         ds["SMOKE_ugm3"] = ds["MASSDEN"] * 1e9
