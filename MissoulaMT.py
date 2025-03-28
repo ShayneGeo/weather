@@ -554,7 +554,12 @@ most_recent_run_hour = (now_utc_for_gif.hour // 6) * 6
 most_recent_run_utc = now_utc_for_gif.replace(hour=most_recent_run_hour, minute=0, second=0, microsecond=0)
 end_date = most_recent_run_utc.astimezone(mountain_tz)
 start_date = end_date - timedelta(days=0)
-time_steps = ["00", "06", "12", "18"]
+#time_steps = ["00", "06", "12", "18"]
+# Get most recent 3 hours (aligned to previous hour to ensure availability)
+now_utc = datetime.utcnow().replace(minute=0, second=0, microsecond=0)
+recent_hours = [(now_utc - timedelta(hours=i)).strftime("%H") for i in range(3)][::-1]
+time_steps = recent_hours
+
 vmin, vmax = 0, 70
 
 frames = []
@@ -642,7 +647,7 @@ def run_smoke_visualization():
         smoke_da = smoke_da.rio.write_crs(native_crs, inplace=False)
         smoke_da_reproj = smoke_da.rio.reproject("EPSG:5070")
         output_tif = os.path.join(output_dir, f"HRRR_Smoke_{date_str}_{hour_str}Z.tif")
-        smoke_da_reproj.rio.to_raster(output_tif)
+        #smoke_da_reproj.rio.to_raster(output_tif)
         ds.close()
         del ds
         gc.collect()
