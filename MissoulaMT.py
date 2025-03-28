@@ -1,4 +1,16 @@
 
+
+
+
+
+
+
+
+
+
+
+
+
 import streamlit as st
 st.set_page_config(layout="wide")
 
@@ -29,13 +41,13 @@ from matplotlib.colors import LinearSegmentedColormap
 # ---------------------------
 # Default Location Settings
 # ---------------------------
-default_lat = 46.85
-default_lon = -113.99
+default_lat = 40.65
+default_lon = -105.307
 
 # ---------------------------
 # NOAA Forecast Retrieval
 # ---------------------------
-st.title("Missoula, MT NOAA Weather + HRRR Forecast (Local Time)")
+st.title("NOAA Weather + HRRR Forecast (Local Time)")
 with st.spinner("Retrieving NOAA forecast..."):
     base_url = f"https://api.weather.gov/points/{default_lat},{default_lon}"
     response = requests.get(base_url)
@@ -555,10 +567,15 @@ most_recent_run_utc = now_utc_for_gif.replace(hour=most_recent_run_hour, minute=
 end_date = most_recent_run_utc.astimezone(mountain_tz)
 start_date = end_date - timedelta(days=0)
 #time_steps = ["00", "06", "12", "18"]
+
+#time_steps = ["00", "06", "12", "18"]
 # Get most recent 3 hours (aligned to previous hour to ensure availability)
 now_utc = datetime.utcnow().replace(minute=0, second=0, microsecond=0)
 recent_hours = [(now_utc - timedelta(hours=i)).strftime("%H") for i in range(3)][::-1]
 time_steps = recent_hours
+
+
+
 
 vmin, vmax = 0, 70
 
@@ -618,169 +635,6 @@ with st.spinner("Generating HRRR Wind Gust GIF..."):
         st.success("HRRR Wind Gust GIF generated successfully!")
     else:
         st.error("No frames were generated. GIF not created.")
-# with st.spinner("Generating HRRR Wind Gust GIF..."):
-#     current_date_iter = start_date
-#     while current_date_iter <= end_date:
-#         date_str = current_date_iter.strftime("%Y%m%d")
-#         for time_ in time_steps:
-#             st.write(f"Processing: {date_str} {time_}Z")
-#             path = f"hrrrzarr/sfc/{date_str}/{date_str}_{time_}z_anl.zarr/surface/GUST"
-#             try:
-#                 # # ---------------------------
-#                 # # Inside your GIF loop, replace the current plotting block with:
-#                 # # ---------------------------
-                
-#                 # # 1) Open Zarr dataset
-#                 # ds = xr.open_zarr(lookup(path), consolidated=False)
-#                 # if 'GUST' not in ds:
-#                 #     ds = xr.open_zarr(lookup(f"{path}/surface"), consolidated=False)
-                
-#                 # # 2) Define the native HRRR projection (Lambert Conformal)
-#                 # native_crs = (
-#                 #     "+proj=lcc +lat_1=38.5 +lat_2=38.5 +lat_0=38.5 +lon_0=-97.5 "
-#                 #     "+x_0=0 +y_0=0 +datum=WGS84 +units=m +no_defs"
-#                 # )
-                
-#                 # # 3) Convert GUST to mph & attach correct projection info
-#                 # ds['GUST_mph'] = ds['GUST'] * 2.23694
-#                 # ds['GUST_mph'] = ds['GUST_mph'].rio.set_spatial_dims(
-#                 #     x_dim='x',
-#                 #     y_dim='y',
-#                 #     inplace=False
-#                 # )
-#                 # ds['GUST_mph'] = ds['GUST_mph'].rio.write_crs(native_crs, inplace=False)
-                
-#                 # # 4) Reproject to EPSG:5070 (Albers) for consistent plotting
-#                 # gust_mph_reproj = ds['GUST_mph'].rio.reproject("EPSG:5070")
-                
-#                 # # 5) Extract the raw values & bounding box
-#                 # data = gust_mph_reproj.values
-#                 # left, bottom, right, top = gust_mph_reproj.rio.bounds()
-                
-#                 # # 6) Create the figure/axes with Albers projection & optional zoom
-#                 # fig_gust = plt.figure(figsize=(10, 6))
-#                 # ax_gust = plt.axes(projection=ccrs.AlbersEqualArea(central_longitude=-96, central_latitude=37))
-                
-#                 # # (Optional) Zoom in a bit, just like your smoke plot
-#                 # zoom_factor = 0.92
-#                 # width = right - left
-#                 # height = top - bottom
-#                 # new_left = left + (1 - zoom_factor) * width / 2
-#                 # new_right = right - (1 - zoom_factor) * width / 2
-#                 # new_bottom = bottom + (1 - zoom_factor) * height / 2
-#                 # new_top = top - (1 - zoom_factor) * height / 2
-#                 # ax_gust.set_extent([new_left, new_right, new_bottom, new_top], crs=ccrs.epsg(5070))
-                
-#                 # # 7) Plot via imshow(), referencing the EPSG:5070 transform
-#                 # ax_gust.imshow(
-#                 #     data,
-#                 #     origin='upper',
-#                 #     extent=(left, right, bottom, top),
-#                 #     vmin=vmin,
-#                 #     vmax=vmax,
-#                 #     transform=ccrs.epsg(5070),
-#                 #     cmap="inferno"
-#                 # )
-                
-#                 # # 8) Add state outlines, coastlines, etc.
-#                 # ax_gust.add_feature(cfeature.STATES, edgecolor='white', linewidth=1)
-#                 # ax_gust.add_feature(cfeature.COASTLINE, edgecolor='white', linewidth=1)
-                
-#                 # # 9) Title & finalize
-#                 # ax_gust.set_title(f"HRRR Wind Gust (MPH) - {date_str} {time_}Z ({mt_time_str})", fontsize=12)
-                
-#                 # # 10) Save the frame to your GIF buffer
-#                 # buf = io.BytesIO()
-#                 # plt.savefig(buf, format="png", dpi=300)
-#                 # buf.seek(0)
-#                 # frame = Image.open(buf).convert("RGB")
-#                 # frames.append(frame)
-                
-#                 # # 11) Cleanup
-#                 # plt.close(fig_gust)
-#                 # buf.close()
-#                 # ds.close()
-#                 # del ds
-#                 # gc.collect()
-
-#                 ds = xr.open_zarr(lookup(path), consolidated=False)
-#                 if 'GUST' not in ds:
-#                     ds = xr.open_zarr(lookup(f"{path}/surface"), consolidated=False)
-#                 ds['GUST_mph'] = ds.GUST * 2.23694
-#                 utc_datetime = datetime.strptime(f"{date_str} {time_}", "%Y%m%d %H")
-#                 utc_datetime = utc_tz.localize(utc_datetime)
-#                 mountain_datetime = utc_datetime.astimezone(mountain_tz)
-#                 mt_time_str = mountain_datetime.strftime("%Y-%m-%d %I:%M %p %Z")
-#                 # fig_gust, ax_gust = plt.subplots(figsize=(10, 6))
-#                 # ds.GUST_mph.plot(
-#                 #     ax=ax_gust, vmin=vmin, vmax=vmax, cmap="inferno",
-#                 #     cbar_kwargs={"orientation": "horizontal", "pad": 0.1}
-#                 # )
-#                 # ax_gust.set_title(f"HRRR Wind Gust (MPH) - {date_str} {time_}Z ({mt_time_str})", fontsize=12)
-#                 # ax_gust.set_xlabel("Longitude")
-#                 # ax_gust.set_ylabel("Latitude")
-#                 fig_gust = plt.figure(figsize=(10, 6))
-#                 ax_gust = plt.axes(projection=ccrs.AlbersEqualArea(central_longitude=-96, central_latitude=37))
-                
-#                 # Set zoom to CONUS extent
-#                 ax_gust.set_extent([-125, -66.5, 24, 49], crs=ccrs.PlateCarree())
-                
-#                 # Plot gust values using PlateCarree projection
-#                 ds.GUST_mph.plot(
-#                     ax=ax_gust,
-#                     transform=ccrs.PlateCarree(),
-#                     vmin=vmin,
-#                     vmax=vmax,
-#                     cmap="inferno",
-#                     cbar_kwargs={"orientation": "horizontal", "pad": 0.05}
-#                 )
-                
-#                 # Add features for better context
-#                 ax_gust.add_feature(cfeature.STATES, linewidth=0.5, edgecolor='white')
-#                 ax_gust.add_feature(cfeature.COASTLINE, linewidth=0.6)
-#                 ax_gust.add_feature(cfeature.BORDERS, linestyle=':', linewidth=0.4)
-                
-#                 ax_gust.set_title(f"HRRR Wind Gust (MPH) - {date_str} {time_}Z ({mt_time_str})", fontsize=12)
-#                 ax_gust.gridlines(draw_labels=True, linewidth=0.3, color='gray', alpha=0.4, linestyle='--')
-
-
-#                 ax_gust.grid(False)
-#                 buf = io.BytesIO()
-#                 plt.savefig(buf, format="png", dpi=300)
-#                 buf.seek(0)
-#                 frame = Image.open(buf).convert("RGB")
-#                 frames.append(frame)
-#                 plt.close(fig_gust)
-#                 buf.close()
-#                 ds.close()
-#                 del ds
-#                 gc.collect()
-#             except Exception as e:
-#                 st.write(f"Skipping {date_str} {time_}Z due to error: {e}")
-#         current_date_iter += timedelta(days=1)
-#     if frames:
-#         gif_buffer = io.BytesIO()
-#         frames[0].save(
-#             gif_buffer,
-#             format="GIF",
-#             append_images=frames[1:],
-#             save_all=True,
-#             duration=500,
-#             loop=0
-#         )
-#         gif_buffer.seek(0)
-#         gif_base64 = base64.b64encode(gif_buffer.getvalue()).decode("utf-8")
-#         gif_html = f'<img src="data:image/gif;base64,{gif_base64}" alt="HRRR Wind Gust GIF" style="width:100%;">'
-#         st.markdown(gif_html, unsafe_allow_html=True)
-#         st.success("HRRR Wind Gust GIF generated successfully!")
-#     else:
-#         st.error("No frames were generated. GIF not created.")
-
-
-
-
-
-
 
 # ---------------------------
 # HRRR Smoke Visualization
@@ -810,95 +664,45 @@ def run_smoke_visualization():
         smoke_da = smoke_da.rio.write_crs(native_crs, inplace=False)
         smoke_da_reproj = smoke_da.rio.reproject("EPSG:5070")
         output_tif = os.path.join(output_dir, f"HRRR_Smoke_{date_str}_{hour_str}Z.tif")
-        #smoke_da_reproj.rio.to_raster(output_tif)
+        smoke_da_reproj.rio.to_raster(output_tif)
         ds.close()
         del ds
         gc.collect()
-        data = smoke_da_reproj.values
-        left, bottom, right, top = smoke_da_reproj.rio.bounds()
-
-        fig_smoke = plt.figure(figsize=(10, 8))
-        ax_smoke = plt.axes(projection=ccrs.AlbersEqualArea(central_longitude=-96, central_latitude=37))
-
-        zoom_factor = 0.92
-        width = right - left
-        height = top - bottom
-        new_left = left + (1 - zoom_factor) * width / 2
-        new_right = right - (1 - zoom_factor) * width / 2
-        new_bottom = bottom + (1 - zoom_factor) * height / 2
-        new_top = top - (1 - zoom_factor) * height / 2
-
-        ax_smoke.set_extent([new_left, new_right, new_bottom, new_top], crs=ccrs.epsg(5070))
-
-        smoke_cmap = LinearSegmentedColormap.from_list(
-            "smoke",
-            ["#000000", "#800000", "#FF4500", "#FFD700"],
-            N=256
-        )
-
-        ax_smoke.imshow(
-            data,
-            origin='upper',
-            extent=(left, right, bottom, top),
-            vmin=0,
-            vmax=2,
-            transform=ccrs.epsg(5070),
-            cmap=smoke_cmap
-        )
-
-        ax_smoke.add_feature(cfeature.STATES, edgecolor='white', linewidth=1)
-        ax_smoke.add_feature(cfeature.COASTLINE, linewidth=1, edgecolor='white')
-        ax_smoke.set_title(f"HRRR Smoke - {date_str} {hour_str}Z")
-        st.pyplot(fig_smoke)
-        # with rasterio.open(output_tif) as src:
-        #     data = src.read(1)
-        #     left, bottom, right, top = src.bounds
-        #     fig_smoke = plt.figure(figsize=(10, 8))
-        #     ax_smoke = plt.axes(projection=ccrs.AlbersEqualArea(central_longitude=-96, central_latitude=37))
-        #     zoom_factor = 0.92
-        #     width = right - left
-        #     height = top - bottom
-        #     new_left = left + (1 - zoom_factor) * width / 2
-        #     new_right = right - (1 - zoom_factor) * width / 2
-        #     new_bottom = bottom + (1 - zoom_factor) * height / 2
-        #     new_top = top - (1 - zoom_factor) * height / 2
-        #     ax_smoke.set_extent([new_left, new_right, new_bottom, new_top], crs=ccrs.epsg(5070))
-        #     smoke_cmap = LinearSegmentedColormap.from_list(
-        #         "smoke",
-        #         ["#000000", "#800000", "#FF4500", "#FFD700"],
-        #         N=256
-        #     )
-        #     ax_smoke.imshow(
-        #         data,
-        #         origin='upper',
-        #         extent=(left, right, bottom, top),
-        #         vmin=0,
-        #         vmax=2,
-        #         transform=ccrs.epsg(5070),
-        #         cmap=smoke_cmap
-        #     )
-        #     ax_smoke.add_feature(cfeature.STATES, edgecolor='white', linewidth=1)
-        #     ax_smoke.add_feature(cfeature.COASTLINE, linewidth=1, edgecolor='white')
-        #     ax_smoke.set_title(f"HRRR Smoke - {date_str} {hour_str}Z")
-        #     st.pyplot(fig_smoke)
+        with rasterio.open(output_tif) as src:
+            data = src.read(1)
+            left, bottom, right, top = src.bounds
+            fig_smoke = plt.figure(figsize=(10, 8))
+            ax_smoke = plt.axes(projection=ccrs.AlbersEqualArea(central_longitude=-96, central_latitude=37))
+            zoom_factor = 0.92
+            width = right - left
+            height = top - bottom
+            new_left = left + (1 - zoom_factor) * width / 2
+            new_right = right - (1 - zoom_factor) * width / 2
+            new_bottom = bottom + (1 - zoom_factor) * height / 2
+            new_top = top - (1 - zoom_factor) * height / 2
+            ax_smoke.set_extent([new_left, new_right, new_bottom, new_top], crs=ccrs.epsg(5070))
+            smoke_cmap = LinearSegmentedColormap.from_list(
+                "smoke",
+                ["#000000", "#800000", "#FF4500", "#FFD700"],
+                N=256
+            )
+            ax_smoke.imshow(
+                data,
+                origin='upper',
+                extent=(left, right, bottom, top),
+                vmin=0,
+                vmax=2,
+                transform=ccrs.epsg(5070),
+                cmap=smoke_cmap
+            )
+            ax_smoke.add_feature(cfeature.STATES, edgecolor='white', linewidth=1)
+            ax_smoke.add_feature(cfeature.COASTLINE, linewidth=1, edgecolor='white')
+            ax_smoke.set_title(f"HRRR Smoke - {date_str} {hour_str}Z")
+            st.pyplot(fig_smoke)
     except Exception as e:
         st.error(f"Could not fetch or plot smoke data for {date_str} {hour_str}Z: {e}")
 
 run_smoke_visualization()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
