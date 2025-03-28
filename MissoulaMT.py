@@ -651,37 +651,73 @@ def run_smoke_visualization():
         ds.close()
         del ds
         gc.collect()
-        with rasterio.open(output_tif) as src:
-            data = src.read(1)
-            left, bottom, right, top = src.bounds
-            fig_smoke = plt.figure(figsize=(10, 8))
-            ax_smoke = plt.axes(projection=ccrs.AlbersEqualArea(central_longitude=-96, central_latitude=37))
-            zoom_factor = 0.92
-            width = right - left
-            height = top - bottom
-            new_left = left + (1 - zoom_factor) * width / 2
-            new_right = right - (1 - zoom_factor) * width / 2
-            new_bottom = bottom + (1 - zoom_factor) * height / 2
-            new_top = top - (1 - zoom_factor) * height / 2
-            ax_smoke.set_extent([new_left, new_right, new_bottom, new_top], crs=ccrs.epsg(5070))
-            smoke_cmap = LinearSegmentedColormap.from_list(
-                "smoke",
-                ["#000000", "#800000", "#FF4500", "#FFD700"],
-                N=256
-            )
-            ax_smoke.imshow(
-                data,
-                origin='upper',
-                extent=(left, right, bottom, top),
-                vmin=0,
-                vmax=2,
-                transform=ccrs.epsg(5070),
-                cmap=smoke_cmap
-            )
-            ax_smoke.add_feature(cfeature.STATES, edgecolor='white', linewidth=1)
-            ax_smoke.add_feature(cfeature.COASTLINE, linewidth=1, edgecolor='white')
-            ax_smoke.set_title(f"HRRR Smoke - {date_str} {hour_str}Z")
-            st.pyplot(fig_smoke)
+        data = smoke_da_reproj.values
+        left, bottom, right, top = smoke_da_reproj.rio.bounds()
+
+        fig_smoke = plt.figure(figsize=(10, 8))
+        ax_smoke = plt.axes(projection=ccrs.AlbersEqualArea(central_longitude=-96, central_latitude=37))
+
+        zoom_factor = 0.92
+        width = right - left
+        height = top - bottom
+        new_left = left + (1 - zoom_factor) * width / 2
+        new_right = right - (1 - zoom_factor) * width / 2
+        new_bottom = bottom + (1 - zoom_factor) * height / 2
+        new_top = top - (1 - zoom_factor) * height / 2
+
+        ax_smoke.set_extent([new_left, new_right, new_bottom, new_top], crs=ccrs.epsg(5070))
+
+        smoke_cmap = LinearSegmentedColormap.from_list(
+            "smoke",
+            ["#000000", "#800000", "#FF4500", "#FFD700"],
+            N=256
+        )
+
+        ax_smoke.imshow(
+            data,
+            origin='upper',
+            extent=(left, right, bottom, top),
+            vmin=0,
+            vmax=2,
+            transform=ccrs.epsg(5070),
+            cmap=smoke_cmap
+        )
+
+        ax_smoke.add_feature(cfeature.STATES, edgecolor='white', linewidth=1)
+        ax_smoke.add_feature(cfeature.COASTLINE, linewidth=1, edgecolor='white')
+        ax_smoke.set_title(f"HRRR Smoke - {date_str} {hour_str}Z")
+        st.pyplot(fig_smoke)
+        # with rasterio.open(output_tif) as src:
+        #     data = src.read(1)
+        #     left, bottom, right, top = src.bounds
+        #     fig_smoke = plt.figure(figsize=(10, 8))
+        #     ax_smoke = plt.axes(projection=ccrs.AlbersEqualArea(central_longitude=-96, central_latitude=37))
+        #     zoom_factor = 0.92
+        #     width = right - left
+        #     height = top - bottom
+        #     new_left = left + (1 - zoom_factor) * width / 2
+        #     new_right = right - (1 - zoom_factor) * width / 2
+        #     new_bottom = bottom + (1 - zoom_factor) * height / 2
+        #     new_top = top - (1 - zoom_factor) * height / 2
+        #     ax_smoke.set_extent([new_left, new_right, new_bottom, new_top], crs=ccrs.epsg(5070))
+        #     smoke_cmap = LinearSegmentedColormap.from_list(
+        #         "smoke",
+        #         ["#000000", "#800000", "#FF4500", "#FFD700"],
+        #         N=256
+        #     )
+        #     ax_smoke.imshow(
+        #         data,
+        #         origin='upper',
+        #         extent=(left, right, bottom, top),
+        #         vmin=0,
+        #         vmax=2,
+        #         transform=ccrs.epsg(5070),
+        #         cmap=smoke_cmap
+        #     )
+        #     ax_smoke.add_feature(cfeature.STATES, edgecolor='white', linewidth=1)
+        #     ax_smoke.add_feature(cfeature.COASTLINE, linewidth=1, edgecolor='white')
+        #     ax_smoke.set_title(f"HRRR Smoke - {date_str} {hour_str}Z")
+        #     st.pyplot(fig_smoke)
     except Exception as e:
         st.error(f"Could not fetch or plot smoke data for {date_str} {hour_str}Z: {e}")
 
