@@ -579,14 +579,29 @@ with st.spinner("Generating HRRR Wind Gust GIF..."):
                 utc_datetime = utc_tz.localize(utc_datetime)
                 mountain_datetime = utc_datetime.astimezone(mountain_tz)
                 mt_time_str = mountain_datetime.strftime("%Y-%m-%d %I:%M %p %Z")
-                fig_gust, ax_gust = plt.subplots(figsize=(10, 6))
+                # fig_gust, ax_gust = plt.subplots(figsize=(10, 6))
+                # ds.GUST_mph.plot(
+                #     ax=ax_gust, vmin=vmin, vmax=vmax, cmap="inferno",
+                #     cbar_kwargs={"orientation": "horizontal", "pad": 0.1}
+                # )
+                # ax_gust.set_title(f"HRRR Wind Gust (MPH) - {date_str} {time_}Z ({mt_time_str})", fontsize=12)
+                # ax_gust.set_xlabel("Longitude")
+                # ax_gust.set_ylabel("Latitude")
+                fig_gust = plt.figure(figsize=(10, 6))
+                ax_gust = plt.axes(projection=ccrs.LambertConformal(central_longitude=-97.5, central_latitude=38.5))
                 ds.GUST_mph.plot(
                     ax=ax_gust, vmin=vmin, vmax=vmax, cmap="inferno",
-                    cbar_kwargs={"orientation": "horizontal", "pad": 0.1}
+                    cbar_kwargs={"orientation": "horizontal", "pad": 0.1},
+                    transform=ccrs.PlateCarree()
                 )
+                
+                ax_gust.coastlines(resolution='50m', linewidth=0.5)
+                ax_gust.add_feature(cfeature.STATES, linewidth=0.5, edgecolor='white')
                 ax_gust.set_title(f"HRRR Wind Gust (MPH) - {date_str} {time_}Z ({mt_time_str})", fontsize=12)
                 ax_gust.set_xlabel("Longitude")
                 ax_gust.set_ylabel("Latitude")
+                ax_gust.gridlines(draw_labels=True, linewidth=0.25, color='gray', alpha=0.5, linestyle='--')
+
                 ax_gust.grid(False)
                 buf = io.BytesIO()
                 plt.savefig(buf, format="png", dpi=300)
