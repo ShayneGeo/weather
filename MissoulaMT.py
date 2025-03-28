@@ -35,7 +35,7 @@ default_lon = -113.99
 # ---------------------------
 # NOAA Forecast Retrieval
 # ---------------------------
-st.title("NOAA Weather + HRRR Forecast (Local Time)")
+st.title("Missoula, MT NOAA Weather + HRRR Forecast (Local Time)")
 with st.spinner("Retrieving NOAA forecast..."):
     base_url = f"https://api.weather.gov/points/{default_lat},{default_lon}"
     response = requests.get(base_url)
