@@ -1,16 +1,3 @@
-
-
-
-
-
-
-
-
-
-
-
-
-
 import streamlit as st
 st.set_page_config(layout="wide")
 
@@ -108,119 +95,6 @@ with st.spinner("Retrieving NOAA forecast..."):
 # ---------------------------
 # HRRR Forecast Retrieval (Last 5 Cycles)
 # ---------------------------
-# with st.spinner("Retrieving last 5 HRRR forecast cycles..."):
-#     tz_finder = TimezoneFinder()
-#     local_tz_name = tz_finder.timezone_at(lng=default_lon, lat=default_lat)
-#     if local_tz_name is None:
-#         local_tz_name = "UTC"
-#     local_tz = pytz.timezone(local_tz_name)
-#     now_rounded_utc = datetime.utcnow().replace(minute=0, second=0, microsecond=0, tzinfo=pytz.utc)
-#     now_local = now_rounded_utc.astimezone(local_tz)
-#     hour_block = (now_rounded_utc.hour // 6) * 6
-#     current_cycle_time_utc = now_rounded_utc.replace(hour=hour_block)
-#     cycle_times_utc = [current_cycle_time_utc - timedelta(hours=6 * i) for i in range(5)]
-#     cycle_times_utc.reverse()
-
-#     level_surface = '2m_above_ground'
-#     var_gust = 'GUST'
-#     var_temp = 'TMP'
-#     level_rh = '2m_above_ground'
-#     var_rh = 'RH'
-
-#     fs = s3fs.S3FileSystem(anon=True)
-#     chunk_index = xr.open_zarr(s3fs.S3Map("s3://hrrrzarr/grid/HRRR_chunk_index.zarr", s3=fs))
-
-#     projection = ccrs.LambertConformal(
-#         central_longitude=262.5,
-#         central_latitude=38.5,
-#         standard_parallels=(38.5, 38.5),
-#         globe=ccrs.Globe(semimajor_axis=6371229, semiminor_axis=6371229)
-#     )
-#     x, y = projection.transform_point(default_lon, default_lat, ccrs.PlateCarree())
-#     nearest_point = chunk_index.sel(x=x, y=y, method="nearest")
-#     fcst_chunk_id = f"0.{nearest_point.chunk_id.values}"
-
-#     def retrieve_data(s3_url):
-#         with fs.open(s3_url, 'rb') as compressed_data:
-#             buffer = ncd.blosc.decompress(compressed_data.read())
-#         dtype = "<f4"
-#         chunk = np.frombuffer(buffer, dtype=dtype)
-#         entry_size = 150 * 150
-#         num_entries = len(chunk) // entry_size
-#         if num_entries == 1:
-#             data_array = np.reshape(chunk, (150, 150))
-#         else:
-#             data_array = np.reshape(chunk, (num_entries, 150, 150))
-#         return data_array
-
-#     # GUST Retrieval
-#     all_forecast_gust = []
-#     for init_time_utc in cycle_times_utc:
-#         run_date_str = init_time_utc.strftime("%Y%m%d")
-#         run_hr_str = init_time_utc.strftime("%H")
-#         fcst_url = (
-#             f"hrrrzarr/sfc/{run_date_str}/"
-#             f"{run_date_str}_{run_hr_str}z_fcst.zarr/{level_surface}/{var_gust}/{level_surface}/{var_gust}/"
-#         )
-#         try:
-#             forecast_data = retrieve_data(fcst_url + fcst_chunk_id)
-#         except Exception as e:
-#             print(f"Error retrieving GUST for {init_time_utc} -> {e}")
-#             continue
-#         num_fcst_hours = forecast_data.shape[0]
-#         valid_times_utc = [
-#             (init_time_utc + timedelta(hours=i)).replace(tzinfo=pytz.utc)
-#             for i in range(num_fcst_hours)
-#         ]
-#         valid_times_local = [vt.astimezone(local_tz) for vt in valid_times_utc]
-#         forecast_values = forecast_data[:, nearest_point.in_chunk_y, nearest_point.in_chunk_x]
-#         all_forecast_gust.append((init_time_utc, valid_times_local, forecast_values))
-
-#     # TMP Retrieval
-#     all_forecast_tmp = []
-#     for init_time_utc in cycle_times_utc:
-#         run_date_str = init_time_utc.strftime("%Y%m%d")
-#         run_hr_str = init_time_utc.strftime("%H")
-#         fcst_url = (
-#             f"hrrrzarr/sfc/{run_date_str}/"
-#             f"{run_date_str}_{run_hr_str}z_fcst.zarr/{level_surface}/{var_temp}/{level_surface}/{var_temp}/"
-#         )
-#         try:
-#             forecast_data = retrieve_data(fcst_url + fcst_chunk_id)
-#         except Exception as e:
-#             print(f"Error retrieving TMP for {init_time_utc} -> {e}")
-#             continue
-#         num_fcst_hours = forecast_data.shape[0]
-#         valid_times_utc = [
-#             (init_time_utc + timedelta(hours=i)).replace(tzinfo=pytz.utc)
-#             for i in range(num_fcst_hours)
-#         ]
-#         valid_times_local = [vt.astimezone(local_tz) for vt in valid_times_utc]
-#         forecast_values = forecast_data[:, nearest_point.in_chunk_y, nearest_point.in_chunk_x]
-#         all_forecast_tmp.append((init_time_utc, valid_times_local, forecast_values))
-
-#     # RH Retrieval
-#     all_forecast_rh = []
-#     for init_time_utc in cycle_times_utc:
-#         run_date_str = init_time_utc.strftime("%Y%m%d")
-#         run_hr_str = init_time_utc.strftime("%H")
-#         fcst_url = (
-#             f"hrrrzarr/sfc/{run_date_str}/"
-#             f"{run_date_str}_{run_hr_str}z_fcst.zarr/{level_rh}/{var_rh}/{level_rh}/{var_rh}/"
-#         )
-#         try:
-#             forecast_data = retrieve_data(fcst_url + fcst_chunk_id)
-#         except Exception as e:
-#             print(f"Error retrieving RH for {init_time_utc} -> {e}")
-#             continue
-#         num_fcst_hours = forecast_data.shape[0]
-#         valid_times_utc = [
-#             (init_time_utc + timedelta(hours=i)).replace(tzinfo=pytz.utc)
-#             for i in range(num_fcst_hours)
-#         ]
-#         valid_times_local = [vt.astimezone(local_tz) for vt in valid_times_utc]
-#         forecast_values = forecast_data[:, nearest_point.in_chunk_y, nearest_point.in_chunk_x]
-#         all_forecast_rh.append((init_time_utc, valid_times_local, forecast_values))
 with st.spinner("Retrieving last 5 HRRR forecast cycles..."):
     tz_finder = TimezoneFinder()
     local_tz_name = tz_finder.timezone_at(lng=default_lon, lat=default_lat)
@@ -339,7 +213,7 @@ with st.spinner("Retrieving last 5 HRRR forecast cycles..."):
         all_forecast_rh.append((init_time_utc, valid_times_local, forecast_values))
 
 # ---------------------------
-# HRRR GUST Plot
+# HRRR GUST Plot (Static)
 # ---------------------------
 fig, ax = plt.subplots(figsize=(10, 5))
 ax.set_title(f'HRRR GUST (mph) Forecasts [Local Time]\nLat={default_lat:.2f}, Lon={default_lon:.2f} | Last 5 Cycles')
@@ -566,20 +440,13 @@ most_recent_run_hour = (now_utc_for_gif.hour // 6) * 6
 most_recent_run_utc = now_utc_for_gif.replace(hour=most_recent_run_hour, minute=0, second=0, microsecond=0)
 end_date = most_recent_run_utc.astimezone(mountain_tz)
 start_date = end_date - timedelta(days=0)
-#time_steps = ["00", "06", "12", "18"]
-
-#time_steps = ["00", "06", "12", "18"]
-# Get most recent 3 hours (aligned to previous hour to ensure availability)
 now_utc = datetime.utcnow().replace(minute=0, second=0, microsecond=0)
 recent_hours = [(now_utc - timedelta(hours=i)).strftime("%H") for i in range(3)][::-1]
 time_steps = recent_hours
 
-
-
-
 vmin, vmax = 0, 70
-
 frames = []
+
 with st.spinner("Generating HRRR Wind Gust GIF..."):
     current_date_iter = start_date
     while current_date_iter <= end_date:
@@ -592,19 +459,56 @@ with st.spinner("Generating HRRR Wind Gust GIF..."):
                 if 'GUST' not in ds:
                     ds = xr.open_zarr(lookup(f"{path}/surface"), consolidated=False)
                 ds['GUST_mph'] = ds.GUST * 2.23694
+
+                # If dims 'x' and 'y' are not found, rename the first two dims to 'y' and 'x'
+                if not set(['x', 'y']).issubset(ds['GUST_mph'].dims):
+                    current_dims = ds['GUST_mph'].dims
+                    if len(current_dims) >= 2:
+                        ds['GUST_mph'] = ds['GUST_mph'].rename({current_dims[0]:'y', current_dims[1]:'x'})
+
+                # Attach the native HRRR Lambert Conformal projection
+                native_crs = (
+                    "+proj=lcc +lat_1=38.5 +lat_2=38.5 +lat_0=38.5 +lon_0=-97.5 "
+                    "+x_0=0 +y_0=0 +datum=WGS84 +units=m +no_defs"
+                )
+                ds['GUST_mph'] = ds['GUST_mph'].rio.set_spatial_dims(x_dim='x', y_dim='y', inplace=False)
+                ds['GUST_mph'] = ds['GUST_mph'].rio.write_crs(native_crs, inplace=False)
+
+                # Reproject to EPSG:5070 (Albers)
+                gust_mph_reproj = ds['GUST_mph'].rio.reproject("EPSG:5070")
+                data = gust_mph_reproj.values
+                left, bottom, right, top = gust_mph_reproj.rio.bounds()
+
                 utc_datetime = datetime.strptime(f"{date_str} {time_}", "%Y%m%d %H")
                 utc_datetime = utc_tz.localize(utc_datetime)
                 mountain_datetime = utc_datetime.astimezone(mountain_tz)
                 mt_time_str = mountain_datetime.strftime("%Y-%m-%d %I:%M %p %Z")
-                fig_gust, ax_gust = plt.subplots(figsize=(10, 6))
-                ds.GUST_mph.plot(
-                    ax=ax_gust, vmin=vmin, vmax=vmax, cmap="inferno",
-                    cbar_kwargs={"orientation": "horizontal", "pad": 0.1}
+
+                fig_gust = plt.figure(figsize=(10, 6))
+                ax_gust = plt.axes(projection=ccrs.AlbersEqualArea(central_longitude=-96, central_latitude=37))
+                zoom_factor = 0.92
+                width = right - left
+                height = top - bottom
+                new_left = left + (1 - zoom_factor) * width / 2
+                new_right = right - (1 - zoom_factor) * width / 2
+                new_bottom = bottom + (1 - zoom_factor) * height / 2
+                new_top = top - (1 - zoom_factor) * height / 2
+                ax_gust.set_extent([new_left, new_right, new_bottom, new_top], crs=ccrs.epsg(5070))
+
+                ax_gust.imshow(
+                    data,
+                    origin='upper',
+                    extent=(left, right, bottom, top),
+                    vmin=vmin,
+                    vmax=vmax,
+                    transform=ccrs.epsg(5070),
+                    cmap="inferno"
                 )
+
+                ax_gust.add_feature(cfeature.STATES, edgecolor='white', linewidth=1)
+                ax_gust.add_feature(cfeature.COASTLINE, edgecolor='white', linewidth=1)
                 ax_gust.set_title(f"HRRR Wind Gust (MPH) - {date_str} {time_}Z ({mt_time_str})", fontsize=12)
-                ax_gust.set_xlabel("Longitude")
-                ax_gust.set_ylabel("Latitude")
-                ax_gust.grid(False)
+
                 buf = io.BytesIO()
                 plt.savefig(buf, format="png", dpi=300)
                 buf.seek(0)
@@ -618,6 +522,7 @@ with st.spinner("Generating HRRR Wind Gust GIF..."):
             except Exception as e:
                 st.write(f"Skipping {date_str} {time_}Z due to error: {e}")
         current_date_iter += timedelta(days=1)
+
     if frames:
         gif_buffer = io.BytesIO()
         frames[0].save(
@@ -703,19 +608,3 @@ def run_smoke_visualization():
         st.error(f"Could not fetch or plot smoke data for {date_str} {hour_str}Z: {e}")
 
 run_smoke_visualization()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
