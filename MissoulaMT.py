@@ -2173,8 +2173,8 @@ from matplotlib.colors import LinearSegmentedColormap
 # ---------------------------
 # Default Location Settings
 # ---------------------------
-default_lat = 40.65
-default_lon = -105.307
+default_lat = 46.8721
+default_lon = -113.9940
 
 # ---------------------------
 # NOAA Forecast Retrieval
