@@ -276,146 +276,121 @@
 #     final_map = asyncio.run(get_forecast_map())
 #     st_data = st_folium(final_map, width=1400, height=800)
 
+# streamlit_app.py  ── run with:  streamlit run streamlit_app.py
 import streamlit as st
-import asyncio
-import httpx
-import geopandas as gpd
+import requests, re, time
 import pandas as pd
 import numpy as np
+import geopandas as gpd
 import folium
-from functools import lru_cache
-import re
 from streamlit_folium import st_folium
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from functools import lru_cache
 
-# ------------------ CONFIG ------------------
-st.set_page_config("🔥 Wildfire Forecast Map", layout="wide")
+# --------------------------- CONFIG ---------------------------------
+st.set_page_config(page_title="🔥 Wildfire Forecast Map",
+                   layout="wide",
+                   initial_sidebar_state="collapsed")
 HEADERS = {"User-Agent": "fire-weather-scraper"}
-SEM = asyncio.Semaphore(100)  # Concurrency limit
+session = requests.Session()
+session.headers.update(HEADERS)
 
-# ------------------ ASYNC SAFE GET ------------------
-async def safe_get(client, url, params=None, retries=3, timeout=30):
-    for attempt in range(retries):
+# ---------------------- SAFE REQUEST WRAPPER ------------------------
+def safe_get(url, params=None, retries=3, timeout=30):
+    for _ in range(retries):
         try:
-            async with SEM:
-                r = await client.get(url, params=params, timeout=timeout)
-                r.raise_for_status()
-                return r
+            r = session.get(url, params=params, timeout=timeout)
+            r.raise_for_status()
+            return r
         except Exception:
-            if attempt == retries - 1:
-                return None
-            await asyncio.sleep(1)
+            time.sleep(1)
+    return None        # fall-through → caller handles
 
-# ------------------ GET FIRE INCIDENTS ------------------
-async def fetch_active_fires(client):
-    url = "https://services3.arcgis.com/T4QMspbfLg3qTGWY/arcgis/rest/services/WFIGS_Incident_Locations_Current/FeatureServer/0/query"
-    resp = await safe_get(client, url, params={"where": "1=1", "outFields": "*", "f": "geojson"})
-    geojson = resp.json()
-    gdf = gpd.GeoDataFrame.from_features(geojson["features"], crs="epsg:4326")
-    return gdf[gdf["POOState"].isin(['US-CA','US-OR','US-WA','US-ID','US-NV','US-UT','US-AZ','US-NM','US-CO','US-MT','US-WY'])]
+# ------------------------- DATA HELPERS -----------------------------
+@st.cache_data(show_spinner="Fetching active fires …")
+def fetch_active_fires():
+    url = "https://services3.arcgis.com/T4QMspbfLg3qTGWY/arcgis/rest/services/" \
+          "WFIGS_Incident_Locations_Current/FeatureServer/0/query"
+    r = safe_get(url, {"where":"1=1","outFields":"*","f":"geojson"})
+    gdf = gpd.GeoDataFrame.from_features(r.json()["features"], crs="epsg:4326")
+    west = ['US-CA','US-OR','US-WA','US-ID','US-NV','US-UT',
+            'US-AZ','US-NM','US-CO','US-MT','US-WY']
+    return gdf[gdf["POOState"].isin(west)]
 
-# ------------------ WEATHER FUNCTIONS ------------------
 @lru_cache(maxsize=512)
-async def get_fwf_product_id(client, office_id):
-    url = "https://api.weather.gov/products"
-    resp = await safe_get(client, url, params={"type": "FWF", "location": office_id, "limit": 1})
-    if resp:
-        products = resp.json().get("@graph", [])
-        return products[0]["id"] if products else None
-    return None
+def get_fwf_product_id(office_id):
+    r = safe_get("https://api.weather.gov/products",
+                 {"type":"FWF","location":office_id,"limit":1})
+    prod = r.json().get("@graph", [])
+    return prod[0]["id"] if prod else None
 
-async def point_forecast(client, lat, lon, max_periods=14):
-    resp = await safe_get(client, f"https://api.weather.gov/points/{lat},{lon}")
-    if not resp:
-        return {"latitude": lat, "longitude": lon, "forecastURL": None}
-    point = resp.json()["properties"]
-    forecast_url = point["forecast"]
-    periods_resp = await safe_get(client, forecast_url)
-    if not periods_resp:
-        return {"latitude": lat, "longitude": lon, "forecastURL": forecast_url}
-    periods = periods_resp.json()["properties"]["periods"][:max_periods]
-    rec = {"latitude": lat, "longitude": lon, "forecastURL": forecast_url}
-    for idx, p in enumerate(periods):
-        for key in ["temperature", "windSpeed", "windDirection", "shortForecast", "detailedForecast", "temperatureTrend", "startTime", "endTime"]:
-            rec[f"{key}_{idx}"] = p.get(key)
-        for key in ["probabilityOfPrecipitation", "relativeHumidity", "dewpoint"]:
-            value = (p.get(key) or {}).get("value")
-            if key == "probabilityOfPrecipitation" and value is None:
-                value = 0
-            rec[f"{key}_{idx}"] = value
+def point_forecast(lat, lon, max_periods=14):
+    base = safe_get(f"https://api.weather.gov/points/{lat},{lon}").json()["properties"]
+    fc_url = base["forecast"]
+    periods = safe_get(fc_url).json()["properties"]["periods"][:max_periods]
+    rec = {"latitude": lat, "longitude": lon}
+    for i,p in enumerate(periods):
+        for k in ["temperature","windSpeed","windDirection",
+                  "shortForecast","detailedForecast","temperatureTrend",
+                  "startTime","endTime"]:
+            rec[f"{k}_{i}"] = p.get(k)
+        for k in ["probabilityOfPrecipitation","relativeHumidity","dewpoint"]:
+            val = (p.get(k) or {}).get("value")
+            if k=="probabilityOfPrecipitation" and val is None: val = 0
+            rec[f"{k}_{i}"] = val
     return rec
 
-async def fwf_forecast(client, lat, lon):
-    resp = await safe_get(client, f"https://api.weather.gov/points/{lat},{lon}")
-    if not resp:
-        return {}
-    point = resp.json()["properties"]
-    office_id = point["forecastOffice"].split("/")[-1]
-    zone_id = point["fireWeatherZone"].split("/")[-1]
+def fwf_forecast(lat, lon):
+    base = safe_get(f"https://api.weather.gov/points/{lat},{lon}").json()["properties"]
+    office = base["forecastOffice"].split("/")[-1]
+    zone   = base["fireWeatherZone"].split("/")[-1]
+    pid = get_fwf_product_id(office)
+    if not pid: return {}
+    text = safe_get(f"https://api.weather.gov/products/{pid}").json().get("productText","")
+    disc = re.search(r"\.DISCUSSION\.\.\.\s*(.*?)\n\n", text, re.DOTALL)
+    block= re.search(rf"\n{zone}-\d{{6}}-\n(.*?)(?=\n[A-Z]{{3}}\d{{3}}-\d{{6}}-|\Z)", text, re.DOTALL)
+    return {"discussion": (disc.group(1).strip() if disc else ""),
+            "full_forecast_block": (block.group(1).strip() if block else "")}
 
-    pid = await get_fwf_product_id(client, office_id)
-    if not pid:
-        return {}
-
-    text_resp = await safe_get(client, f"https://api.weather.gov/products/{pid}")
-    if not text_resp:
-        return {}
-
-    text = text_resp.json().get("productText", "")
-    discussion_match = re.search(r"\.DISCUSSION\.\.\.\s*(.*?)\n\n", text, re.DOTALL)
-    discussion = discussion_match.group(1).strip() if discussion_match else ""
-    block_match = re.search(rf"\n{zone_id}-\d{{6}}-\n(.*?)(?=\n[A-Z]{{3}}\d{{3}}-\d{{6}}-|\Z)", text, re.DOTALL)
-    full_forecast_block = block_match.group(1).strip() if block_match else ""
-
-    return {"discussion": discussion, "full_forecast_block": full_forecast_block}
-
-async def process_fire(client, row):
+def process_fire(row):
     lat, lon = row.geometry.y, row.geometry.x
-    pf, fw = await asyncio.gather(
-        point_forecast(client, lat, lon),
-        fwf_forecast(client, lat, lon)
-    )
+    pf = point_forecast(lat, lon)
+    fw = fwf_forecast(lat, lon)
     return {**pf, **fw, **row._asdict()}
 
-# ------------------ MAIN MAP FUNCTION ------------------
-@st.cache_data(show_spinner="Fetching data and forecasts...")
-def run_main_sync():
-    return asyncio.run(get_forecast_map())
-
-async def get_forecast_map():
-    async with httpx.AsyncClient(headers=HEADERS) as client:
-        gdf = await fetch_active_fires(client)
-        tasks = [process_fire(client, row) for row in gdf.itertuples()]
-        records = await asyncio.gather(*tasks)
-    forecast_df = pd.DataFrame(records)
-    forecast_df["size_scaled"] = np.log1p(forecast_df["IncidentSize"].fillna(1)) * 2
-    gdf_map = gpd.GeoDataFrame(forecast_df, geometry="geometry", crs="epsg:4326")
-    center = [gdf_map.geometry.y.mean(), gdf_map.geometry.x.mean()]
-    m = folium.Map(location=center, zoom_start=5, tiles="CartoDB Positron", control_scale=True, zoom_control=False)
-
-    for _, row in gdf_map.iterrows():
-        lat, lon = row.geometry.y, row.geometry.x
-        irwin = row.get('IrwinID', row.get('IRWINID', 'N/A')).strip('{}')
-        detail = row.get('detailedForecast_0', 'No forecast available').replace('\n', '<br>')
-        html = f"""
-        <div style="font-size: 16px; line-height: 1.4;">
-            <b>IrwinID:</b> {irwin}<br><br>{detail}
-        </div>
-        """
-        popup = folium.Popup(folium.IFrame(html=html, width=300, height=200))
+# ----------------------- MAIN MAP BUILDER ---------------------------
+@st.cache_data(show_spinner="Downloading forecasts …", ttl=900)
+def build_map():
+    gdf = fetch_active_fires()
+    records=[]
+    with ThreadPoolExecutor(max_workers=32) as ex:
+        fut = {ex.submit(process_fire, r): r for r in gdf.itertuples()}
+        for f in as_completed(fut):
+            try:   records.append(f.result())
+            except Exception as e:   st.warning(f"{fut[f].IncidentName} skipped: {e}")
+    df = pd.DataFrame(records)
+    df["size_scaled"] = np.log1p(df["IncidentSize"].fillna(1))*2
+    gmap = folium.Map(location=[df.geometry.y.mean(), df.geometry.x.mean()],
+                      zoom_start=5, tiles="CartoDB Positron",
+                      control_scale=True, zoom_control=False)
+    for _,r in df.iterrows():
+        lat,lon = r.geometry.y, r.geometry.x
+        irwin = r.get("IrwinID", r.get("IRWINID","N/A")).strip("{}")
+        detail= r.get("detailedForecast_0","No forecast").replace("\n","<br>")
+        html  = f"<div style='font-size:15px'><b>IrwinID:</b> {irwin}<br><br>{detail}</div>"
         folium.CircleMarker(
-            location=(lat, lon),
-            radius=row.get("size_scaled", 1.5),
-            color="red",
-            fill=True,
-            fill_opacity=0.7,
-            popup=popup
-        ).add_to(m)
-    return m, forecast_df
+            location=(lat,lon),
+            radius=r.get("size_scaled",1.5),
+            color="red", fill=True, fill_opacity=0.8,
+            popup=folium.Popup(html,max_width=300)
+        ).add_to(gmap)
+    return gmap
 
-# ------------------ STREAMLIT APP ------------------
-fmap, df = run_main_sync()
-st.markdown("### 🔥 Western U.S. Wildfire Forecast Map")
-st_folium(fmap, height=800, width=1400)
+# ------------------------- STREAMLIT UI -----------------------------
+st.markdown("## 🔥 Western U.S. Wildfires & NWS Forecast (auto-loaded)")
+
+fmap = build_map()
+st_folium(fmap, height=800, width=1400, returned_objects=[])
 
 
 
