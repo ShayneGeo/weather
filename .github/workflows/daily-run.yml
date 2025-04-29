@@ -24,4 +24,4 @@ jobs:
         pip install geopandas requests folium pandas numpy
 
     - name: Run script
-      run: python Wildfire_Wap.py
+      run: python Wildfire_Map.py
