@@ -103,7 +103,7 @@ def main():
 
     # ⏳ Save CSV with timestamp
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M")
-    forecast_df.to_csv(f"C:\\Users\\magst\\OneDrive\\Pictures\\Desktop\\NIFC_WEATHER_OUTPUTS\\wildfire_forecast_{timestamp}.csv", index=False)
+    forecast_df.to_csv(f"wildfire_forecast_{timestamp}.csv", index=False)
 
     center = [gdf_map.geometry.y.mean(), gdf_map.geometry.x.mean()]
     m = folium.Map(location=center, zoom_start=5, tiles="CartoDB Positron", control_scale=False, zoom_control=False)
@@ -133,7 +133,7 @@ def main():
 if __name__ == "__main__":
     m = main()  # assign returned map
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M")
-    m.save(f"C:\\Users\\magst\\OneDrive\\Pictures\\Desktop\\NIFC_WEATHER_OUTPUTS\\wildfire_map_{timestamp}.html")
+    m.save(f"wildfire_map_{timestamp}.html")
 
 
 # THIS IS ABSOLUTLY THE ONE
