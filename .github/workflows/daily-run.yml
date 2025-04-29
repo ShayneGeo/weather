@@ -2,7 +2,7 @@ name: Daily Wildfire Forecast Job
 
 on:
   schedule:
-    - cron: '23 28 * * *'
+    - cron: '28 30 * * *'
   workflow_dispatch:      # Optional: allows manual trigger from GitHub UI
 
 jobs:
