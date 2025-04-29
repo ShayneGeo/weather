@@ -395,7 +395,12 @@ def build_map():
     return gmap
 
 # ------------------------- STREAMLIT UI -----------------------------
-st.markdown("## 🔥 Western U.S. Wildfires & NWS Forecast (auto-loaded)")
+st.markdown("## 🔥 Western U.S. Wildfires & NWS Forecast")
+st.markdown("""
+This map shows active wildfires in the Western U.S., automatically updated from NIFC data.  
+Each red circle represents an incident, sized relative to the fire's area.  
+Click on a point to view the detailed National Weather Service forecast for that location.
+""")
 
 fmap = build_map()
 st_folium(fmap, height=800, width=1400, returned_objects=[])
