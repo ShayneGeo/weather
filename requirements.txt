@@ -23,3 +23,4 @@ imageio
 rioxarray
 scipy
 geopandas
+httpx
