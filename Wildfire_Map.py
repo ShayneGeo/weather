@@ -7,7 +7,7 @@ import folium
 import re
 from functools import lru_cache
 from concurrent.futures import ThreadPoolExecutor, as_completed
-
+import time
 # ------------------ SETUP ------------------
 HEADERS = {"User-Agent": "fire-weather-scraper"}
 session = requests.Session()
