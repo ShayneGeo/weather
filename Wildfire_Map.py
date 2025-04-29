@@ -131,9 +131,9 @@ def main():
     return m
 
 if __name__ == "__main__":
-    m = main()# assign returned map
-
-    
+    m = main()  # assign returned map
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M")
+    m.save(f"C:\\Users\\magst\\OneDrive\\Pictures\\Desktop\\NIFC_WEATHER_OUTPUTS\\wildfire_map_{timestamp}.html")
 
 
 # THIS IS ABSOLUTLY THE ONE
