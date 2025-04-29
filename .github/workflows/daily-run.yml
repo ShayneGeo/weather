@@ -2,7 +2,7 @@ name: Daily Wildfire Forecast Job
 
 on:
   schedule:
-    - cron: '0 13 * * *'  # Runs daily at 13:00 UTC (6:00 AM PT)
+    - cron: '23 23 * * *'
   workflow_dispatch:      # Optional: allows manual trigger from GitHub UI
 
 jobs:
@@ -24,4 +24,4 @@ jobs:
         pip install geopandas requests folium pandas numpy
 
     - name: Run script
-      run: python wildfire_map.py
+      run: python Wildfire_Wap.py
