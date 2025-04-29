@@ -122,7 +122,7 @@
 #             ).add_to(m)
 
 #         st_folium(m, width=1400, height=800)
-# 🚀 Ultra-Fast Async Wildfire Forecast Fetcher
+# 🚀 Streamlit Ultra-Fast Wildfire Forecast Fetcher App
 
 import asyncio
 import httpx
@@ -130,13 +130,14 @@ import geopandas as gpd
 import pandas as pd
 import numpy as np
 import folium
+import streamlit as st
+from streamlit_folium import st_folium
 from functools import lru_cache
 import re
-from folium.plugins import MarkerCluster
 
 # ------------------ SETUP ------------------
 HEADERS = {"User-Agent": "fire-weather-scraper"}
-SEM = asyncio.Semaphore(100)  # Control number of concurrent API calls (adjustable)
+SEM = asyncio.Semaphore(100)
 
 # ------------------ ASYNC HTTP REQUEST ------------------
 async def safe_get(client, url, params=None, retries=3, timeout=30):
@@ -148,13 +149,15 @@ async def safe_get(client, url, params=None, retries=3, timeout=30):
                 return response
         except Exception:
             if attempt == retries - 1:
-                raise
+                return None
             await asyncio.sleep(1)
 
 # ------------------ FETCH ACTIVE FIRES ------------------
 async def fetch_active_fires(client):
     url = "https://services3.arcgis.com/T4QMspbfLg3qTGWY/arcgis/rest/services/WFIGS_Incident_Locations_Current/FeatureServer/0/query"
     resp = await safe_get(client, url, params={"where": "1=1", "outFields": "*", "f": "geojson"})
+    if resp is None:
+        raise RuntimeError("Failed to fetch active fires.")
     geojson = resp.json()
     gdf = gpd.GeoDataFrame.from_features(geojson["features"], crs="epsg:4326")
     return gdf[gdf["POOState"].isin(['US-CA', 'US-OR', 'US-WA', 'US-ID', 'US-NV', 'US-UT', 'US-AZ', 'US-NM', 'US-CO', 'US-MT', 'US-WY'])]
@@ -164,13 +167,24 @@ async def fetch_active_fires(client):
 async def get_fwf_product_id(client, office_id):
     url = "https://api.weather.gov/products"
     resp = await safe_get(client, url, params={"type": "FWF", "location": office_id, "limit": 1})
+    if resp is None:
+        return None
     products = resp.json().get("@graph", [])
     return products[0]["id"] if products else None
 
 async def point_forecast(client, lat, lon, max_periods=14):
-    point = (await safe_get(client, f"https://api.weather.gov/points/{lat},{lon}")).json()["properties"]
+    point_resp = await safe_get(client, f"https://api.weather.gov/points/{lat},{lon}")
+    if point_resp is None:
+        return {}
+
+    point = point_resp.json()["properties"]
     forecast_url = point["forecast"]
-    periods = (await safe_get(client, forecast_url)).json()["properties"]["periods"][:max_periods]
+
+    forecast_resp = await safe_get(client, forecast_url)
+    if forecast_resp is None:
+        return {}
+
+    periods = forecast_resp.json()["properties"]["periods"][:max_periods]
     rec = {"latitude": lat, "longitude": lon, "forecastURL": forecast_url}
     for idx, p in enumerate(periods):
         for key in ["temperature", "windSpeed", "windDirection", "shortForecast", "detailedForecast", "temperatureTrend", "startTime", "endTime"]:
@@ -183,7 +197,11 @@ async def point_forecast(client, lat, lon, max_periods=14):
     return rec
 
 async def fwf_forecast(client, lat, lon):
-    point = (await safe_get(client, f"https://api.weather.gov/points/{lat},{lon}")).json()["properties"]
+    point_resp = await safe_get(client, f"https://api.weather.gov/points/{lat},{lon}")
+    if point_resp is None:
+        return {}
+
+    point = point_resp.json()["properties"]
     office_id = point["forecastOffice"].split("/")[-1]
     zone_id = point["fireWeatherZone"].split("/")[-1]
 
@@ -191,7 +209,11 @@ async def fwf_forecast(client, lat, lon):
     if not pid:
         return {}
 
-    text = (await safe_get(client, f"https://api.weather.gov/products/{pid}")).json().get("productText", "")
+    text_resp = await safe_get(client, f"https://api.weather.gov/products/{pid}")
+    if text_resp is None:
+        return {}
+
+    text = text_resp.json().get("productText", "")
 
     discussion_match = re.search(r"\.DISCUSSION\.\.\.\s*(.*?)\n\n", text, re.DOTALL)
     discussion = discussion_match.group(1).strip() if discussion_match else ""
@@ -209,11 +231,10 @@ async def process_fire(client, row):
     )
     return {**pf, **fw, **row._asdict()}
 
-# ------------------ MAIN ASYNC FUNCTION ------------------
-async def main():
+# ------------------ MAIN FUNCTION ------------------
+async def get_forecast_map():
     async with httpx.AsyncClient(headers=HEADERS) as client:
         gdf_wgs = await fetch_active_fires(client)
-
         tasks = [process_fire(client, row) for row in gdf_wgs.itertuples()]
         records = await asyncio.gather(*tasks, return_exceptions=False)
 
@@ -221,8 +242,8 @@ async def main():
     forecast_df["size_scaled"] = np.log1p(forecast_df["IncidentSize"].fillna(1)) * 2
 
     gdf_map = gpd.GeoDataFrame(forecast_df, geometry="geometry", crs="epsg:4326")
-
     center = [gdf_map.geometry.y.mean(), gdf_map.geometry.x.mean()]
+
     m = folium.Map(location=center, zoom_start=5, tiles="CartoDB Positron", control_scale=False, zoom_control=False)
 
     for _, row in gdf_map.iterrows():
@@ -247,9 +268,12 @@ async def main():
 
     return m
 
-# ------------------ RUN ------------------
-if __name__ == "__main__":
-    final_map = asyncio.run(main())
-    final_map.save("wildfire_forecasts.html")
-    print("🔥 Map saved as wildfire_forecasts.html")
+# ------------------ STREAMLIT APP ------------------
+st.set_page_config(page_title="🔥 Wildfire Forecasts", layout="wide")
+st.title("🔥 Active Wildfires in the Western U.S. (With Forecasts)")
+
+if st.button("Fetch Latest Forecasts"):
+    with st.spinner("Fetching fires and forecasts... please wait 3–5 seconds!"):
+        final_map = asyncio.run(get_forecast_map())
+        st_folium(final_map, width=1400, height=800)
 
