@@ -138,6 +138,7 @@ def main():
 if __name__ == "__main__":
     m = main()  # assign returned map
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M")
+    base_dir = r"C:\Users\magst\OneDrive\Pictures\Desktop\NIFC_WEATHER_OUTPUTS"
     m.save(fr"{base_dir}\wildfire_map_{timestamp}.html")
 
 
