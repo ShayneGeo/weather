@@ -369,9 +369,17 @@ def build_map():
             try:   records.append(f.result())
             except Exception as e:   st.warning(f"{fut[f].IncidentName} skipped: {e}")
     df = pd.DataFrame(records)
-    df["size_scaled"] = np.log1p(df["IncidentSize"].fillna(1))*2
-    gmap = folium.Map(location=[df.geometry.y.mean(), df.geometry.x.mean()],
-                      zoom_start=5, tiles="CartoDB Positron",
+    df = pd.DataFrame(records)
+    df["size_scaled"] = np.log1p(df["IncidentSize"].fillna(1)) * 2
+
+    # --- convert FIRST ---
+    gdf_map = gpd.GeoDataFrame(df, geometry="geometry", crs="epsg:4326")
+
+    # --- now use gdf_map for the centre ---------------------------
+    center = [gdf_map.geometry.y.mean(), gdf_map.geometry.x.mean()]
+
+    gmap = folium.Map(location=center, zoom_start=5,
+                      tiles="CartoDB Positron",
                       control_scale=True, zoom_control=False)
     for _,r in df.iterrows():
         lat,lon = r.geometry.y, r.geometry.x
