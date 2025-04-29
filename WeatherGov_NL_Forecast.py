@@ -122,7 +122,7 @@
 #             ).add_to(m)
 
 #         st_folium(m, width=1400, height=800)
-# 🚀 Streamlit Ultra-Fast Wildfire Forecast Fetcher App
+# 🚀 Always-Running Streamlit Wildfire Forecast Map
 
 import asyncio
 import httpx
@@ -231,7 +231,7 @@ async def process_fire(client, row):
     )
     return {**pf, **fw, **row._asdict()}
 
-# ------------------ MAIN FUNCTION ------------------
+# ------------------ MAIN FETCH ------------------
 async def get_forecast_map():
     async with httpx.AsyncClient(headers=HEADERS) as client:
         gdf_wgs = await fetch_active_fires(client)
@@ -272,8 +272,8 @@ async def get_forecast_map():
 st.set_page_config(page_title="🔥 Wildfire Forecasts", layout="wide")
 st.title("🔥 Active Wildfires in the Western U.S. (With Forecasts)")
 
-if st.button("Fetch Latest Forecasts"):
-    with st.spinner("Fetching fires and forecasts... please wait 3–5 seconds!"):
-        final_map = asyncio.run(get_forecast_map())
-        st_folium(final_map, width=1400, height=800)
+with st.spinner("Loading wildfires and forecasts..."):
+    final_map = asyncio.run(get_forecast_map())
+    st_data = st_folium(final_map, width=1400, height=800)
+
 
