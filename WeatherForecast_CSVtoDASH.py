@@ -110,7 +110,7 @@ if st.button("🔍 Show Weather Forecast") and irwin_id:
         st.subheader(f"🔥 {fire['IncidentName']}")
         st.markdown(f"**📍 Location:** ({fire['latitude']:.4f}, {fire['longitude']:.4f})  \n"
                     f"**📏 Size:** {fire['IncidentSize']} acres  \n"
-                    f"**🆔 IRWIN ID:** {fire['IrwinID']}  \n"
+                    f"**🆔 IRWIN ID:** {fire['IrwinID']}  \n")
                     #f"**🔗 Forecast URL:** [{fire['forecastURL']}]({fire['forecastURL']})")
 
         st.subheader("🌤️ 7-Day Forecast Summary")
