@@ -24,3 +24,5 @@ rioxarray
 scipy
 geopandas
 httpx
+pandas
+numpy
