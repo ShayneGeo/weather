@@ -114,7 +114,7 @@ if st.button("🔍 Show Weather Forecast") and irwin_id:
                     #f"**🔗 Forecast URL:** [{fire['forecastURL']}]({fire['forecastURL']})")
 
         st.subheader("🌤️ 7-Day Forecast Summary")
-        for i in range(7):
+        for i in range(14):
             start_raw = fire.get(f'startTime_{i}')
             end_raw = fire.get(f'endTime_{i}')
 
