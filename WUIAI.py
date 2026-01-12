@@ -1444,7 +1444,7 @@ from openai import OpenAI
 # DEFAULTS
 # =========================
 DEFAULT_MODEL = "gpt-4o"
-DEFAULT_SAVE_DIR = r"C:\Users\"
+DEFAULT_SAVE_DIR = "C:\\Users"
 
 DEFAULT_SYSTEM = "You are a land cover photo-analyst. Use only what is visible."
 
