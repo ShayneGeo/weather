@@ -944,7 +944,7 @@ import matplotlib.pyplot as plt
 # DEFAULTS
 # =========================
 DEFAULT_MODEL = "gpt-4o"
-DEFAULT_SAVE_DIR = r"C:\Users\magst\Desktop\openai\SNAGHAZARD"
+DEFAULT_SAVE_DIR = r"C:\Users\"
 
 DEFAULT_SYSTEM = "You are a land cover photo-analyst. Use only what is visible."
 
@@ -1193,7 +1193,7 @@ def save_quicklook(pil_image, lon, lat, answer, naip_id, out_dir):
 # STREAMLIT UI
 # =========================
 st.set_page_config(page_title="NAIP WUI Map-Click Q&A", layout="wide")
-st.title("NAIP WUI Map-Click Q&A (click map → crop → run model)")
+st.title("NAIP WUI Map-Click")
 
 api_key = os.getenv("OPENAI_API_KEY", "") or (st.secrets.get("OPENAI_API_KEY") if hasattr(st, "secrets") else "")
 if not api_key:
