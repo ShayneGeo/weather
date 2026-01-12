@@ -1679,7 +1679,7 @@ def try_parse_json(text):
 # =========================
 # STREAMLIT UI
 # =========================
-st.set_page_config(page_title="NAIP WUI Map-Click Q&A", layout="wide")
+st.set_page_config(page_title="NAIP WUI Map-Click", layout="wide")
 st.title("NAIP WUI Map-Click")
 
 api_key = os.getenv("OPENAI_API_KEY", "") or (st.secrets.get("OPENAI_API_KEY") if hasattr(st, "secrets") else "")
@@ -1718,7 +1718,7 @@ with st.sidebar:
 system_preamble = st.text_area("System preamble", value=DEFAULT_SYSTEM, height=90)
 question = st.text_area("Question prompt", value=DEFAULT_QUESTION, height=280)
 
-st.subheader("1) Click a location on the map")
+st.subheader("1) Pseudo Double-Click a location on the map")
 st.caption("No point is selected at startup. Click to drop a point; then the crop box appears and you can run analysis.")
 
 m = folium.Map(location=st.session_state.map_center, zoom_start=st.session_state.map_zoom, control_scale=True)
