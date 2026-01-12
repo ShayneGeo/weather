@@ -340,7 +340,8 @@ if run:
 
     with c1:
         st.subheader("NAIP crop")
-        st.image(pil, caption=f"{naip_id} | crop={int(side_m)}m", use_container_width=True)
+        #st.image(pil, caption=f"{naip_id} | crop={int(side_m)}m", use_container_width=True)
+        st.image(np.array(pil), caption=f"{naip_id} | crop={int(side_m)}m", width=650)
         st.caption(f"COG href: {href}")
 
     st.info("Calling OpenAI model...")
