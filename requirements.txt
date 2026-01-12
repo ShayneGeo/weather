@@ -26,3 +26,17 @@ geopandas
 httpx
 pandas
 numpy
+streamlit
+streamlit-folium
+folium
+pystac-client
+planetary-computer
+openai
+numpy
+pillow
+matplotlib
+shapely
+pyproj
+rasterio
+geopandas
+requests
