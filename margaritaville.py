@@ -484,8 +484,6 @@
 
 
 
-
-
 import streamlit as st
 st.set_page_config(layout="wide")
 
@@ -498,18 +496,23 @@ import xarray as xr
 import cartopy.crs as ccrs
 import matplotlib.pyplot as plt
 import pytz
-from timezonefinder import TimezoneFinder
 from astral import LocationInfo
 from astral.sun import sun
 from datetime import timedelta, datetime
 
-# ---------------------------
-# DEFAULT SETTINGS
-# ---------------------------
-default_lat = 40.65
-default_lon = -105.307
+# Based on your current app structure, but hardcoded for Panama City Beach so
+# timezonefinder/cffi is removed entirely. :contentReference[oaicite:0]{index=0}
 
-st.title("NOAA Weather + HRRR Forecast (Local Time)")
+# ---------------------------
+# HARD-CODED PCB SETTINGS
+# ---------------------------
+LOCATION_NAME = "Margaritaville Beach Cottage Resort, Panama City Beach"
+DEFAULT_LAT = 30.1766
+DEFAULT_LON = -85.8055
+LOCAL_TZ_NAME = "America/Chicago"
+
+st.title(f"{LOCATION_NAME} Weather App")
+st.caption(f"Panama City Beach, FL • Lat {DEFAULT_LAT:.4f}, Lon {DEFAULT_LON:.4f} • Time Zone: {LOCAL_TZ_NAME}")
 
 # ---------------------------
 # CACHED HELPERS
@@ -522,14 +525,6 @@ def get_s3_fs():
 def get_chunk_index():
     fs = get_s3_fs()
     return xr.open_zarr(s3fs.S3Map("s3://hrrrzarr/grid/HRRR_chunk_index.zarr", s3=fs))
-
-@st.cache_data(ttl=1800)
-def get_local_timezone(lat, lon):
-    tz_finder = TimezoneFinder()
-    local_tz_name = tz_finder.timezone_at(lng=lon, lat=lat)
-    if local_tz_name is None:
-        local_tz_name = "UTC"
-    return local_tz_name
 
 @st.cache_data(ttl=1800)
 def fetch_noaa_forecast(lat, lon):
@@ -659,7 +654,7 @@ def retrieve_hrrr_chunk_data(fs, s3_url):
 
 @st.cache_data(ttl=1800, show_spinner=False)
 def load_hrrr_forecasts(lat, lon, n_cycles=3):
-    local_tz_name = get_local_timezone(lat, lon)
+    local_tz_name = LOCAL_TZ_NAME
     local_tz = pytz.timezone(local_tz_name)
 
     now_rounded_utc = datetime.utcnow().replace(minute=0, second=0, microsecond=0, tzinfo=pytz.utc)
@@ -717,8 +712,10 @@ def load_hrrr_forecasts(lat, lon, n_cycles=3):
 # SIDEBAR CONTROLS
 # ---------------------------
 st.sidebar.header("Settings")
-lat = st.sidebar.number_input("Latitude", value=default_lat, format="%.5f")
-lon = st.sidebar.number_input("Longitude", value=default_lon, format="%.5f")
+st.sidebar.markdown("Hardcoded for Panama City Beach.")
+st.sidebar.write(f"Latitude: {DEFAULT_LAT}")
+st.sidebar.write(f"Longitude: {DEFAULT_LON}")
+st.sidebar.write(f"Timezone: {LOCAL_TZ_NAME}")
 n_cycles = st.sidebar.selectbox("HRRR cycles", [2, 3, 4, 5], index=1)
 load_hrrr = st.sidebar.button("Load HRRR plots")
 
@@ -728,7 +725,7 @@ load_hrrr = st.sidebar.button("Load HRRR plots")
 st.header("NOAA Daily Forecast")
 
 try:
-    forecast_df = fetch_noaa_forecast(lat, lon)
+    forecast_df = fetch_noaa_forecast(DEFAULT_LAT, DEFAULT_LON)
 
     if forecast_df is not None and not forecast_df.empty:
         st.success("NOAA forecast retrieved successfully!")
@@ -771,7 +768,7 @@ st.header("HRRR Forecast Plots")
 if load_hrrr:
     with st.spinner("Loading HRRR forecasts..."):
         try:
-            results, local_tz_name = load_hrrr_forecasts(lat, lon, n_cycles=n_cycles)
+            results, local_tz_name = load_hrrr_forecasts(DEFAULT_LAT, DEFAULT_LON, n_cycles=n_cycles)
             local_tz = pytz.timezone(local_tz_name)
             now_local = datetime.utcnow().replace(tzinfo=pytz.utc).astimezone(local_tz)
 
@@ -783,7 +780,7 @@ if load_hrrr:
 
             # GUST
             fig, ax = plt.subplots(figsize=(10, 5))
-            ax.set_title(f"HRRR GUST (mph)\nLat={lat:.2f}, Lon={lon:.2f}")
+            ax.set_title(f"HRRR GUST (mph)\nLat={DEFAULT_LAT:.2f}, Lon={DEFAULT_LON:.2f}")
             ax.set_xlabel("Valid Time (Local)")
             ax.set_ylabel("GUST (mph)")
             all_times = []
@@ -793,12 +790,18 @@ if load_hrrr:
                 vals = fvalues * 2.23694
                 if len(vals) > 0:
                     max_val = max(max_val, np.nanmax(vals))
-                ax.plot(vtimes_local, vals, color=colors[i % len(colors)], marker="x", linestyle="-",
-                        label=f"Init {init_time_utc.strftime('%m-%d %H:%M UTC')}")
+                ax.plot(
+                    vtimes_local,
+                    vals,
+                    color=colors[i % len(colors)],
+                    marker="x",
+                    linestyle="-",
+                    label=f"Init {init_time_utc.strftime('%m-%d %H:%M UTC')}"
+                )
                 all_times.extend(vtimes_local)
 
             ax.axvline(x=now_local, color="black", linestyle=":", label="Now")
-            add_night_shading(ax, all_times, local_tz_name, local_tz, lat, lon)
+            add_night_shading(ax, all_times, local_tz_name, local_tz, DEFAULT_LAT, DEFAULT_LON)
             ax.set_ylim(0, max_val + 5 if max_val else 10)
             ax.legend(loc="center left", bbox_to_anchor=(1, 0.5))
             ax.grid(True)
@@ -807,7 +810,7 @@ if load_hrrr:
 
             # TEMP
             fig2, ax2 = plt.subplots(figsize=(10, 5))
-            ax2.set_title(f"HRRR TMP (°F)\nLat={lat:.2f}, Lon={lon:.2f}")
+            ax2.set_title(f"HRRR TMP (°F)\nLat={DEFAULT_LAT:.2f}, Lon={DEFAULT_LON:.2f}")
             ax2.set_xlabel("Valid Time (Local)")
             ax2.set_ylabel("TMP (°F)")
             all_times = []
@@ -821,12 +824,18 @@ if load_hrrr:
                     local_max = np.nanmax(vals)
                     min_val = local_min if min_val is None else min(min_val, local_min)
                     max_val = local_max if max_val is None else max(max_val, local_max)
-                ax2.plot(vtimes_local, vals, color=colors[i % len(colors)], marker="x", linestyle="-",
-                         label=f"Init {init_time_utc.strftime('%m-%d %H:%M UTC')}")
+                ax2.plot(
+                    vtimes_local,
+                    vals,
+                    color=colors[i % len(colors)],
+                    marker="x",
+                    linestyle="-",
+                    label=f"Init {init_time_utc.strftime('%m-%d %H:%M UTC')}"
+                )
                 all_times.extend(vtimes_local)
 
             ax2.axvline(x=now_local, color="black", linestyle=":", label="Now")
-            add_night_shading(ax2, all_times, local_tz_name, local_tz, lat, lon)
+            add_night_shading(ax2, all_times, local_tz_name, local_tz, DEFAULT_LAT, DEFAULT_LON)
             if min_val is not None and max_val is not None:
                 ax2.set_ylim(min_val - 10, max_val + 10)
             ax2.legend(loc="center left", bbox_to_anchor=(1, 0.5))
@@ -836,7 +845,7 @@ if load_hrrr:
 
             # RH
             fig3, ax3 = plt.subplots(figsize=(10, 5))
-            ax3.set_title(f"HRRR RH (%)\nLat={lat:.2f}, Lon={lon:.2f}")
+            ax3.set_title(f"HRRR RH (%)\nLat={DEFAULT_LAT:.2f}, Lon={DEFAULT_LON:.2f}")
             ax3.set_xlabel("Valid Time (Local)")
             ax3.set_ylabel("RH (%)")
             all_times = []
@@ -847,12 +856,18 @@ if load_hrrr:
                 if len(vals) > 0:
                     local_max = np.nanmax(vals)
                     max_val = local_max if max_val is None else max(max_val, local_max)
-                ax3.plot(vtimes_local, vals, color=colors[i % len(colors)], marker="x", linestyle="-",
-                         label=f"Init {init_time_utc.strftime('%m-%d %H:%M UTC')}")
+                ax3.plot(
+                    vtimes_local,
+                    vals,
+                    color=colors[i % len(colors)],
+                    marker="x",
+                    linestyle="-",
+                    label=f"Init {init_time_utc.strftime('%m-%d %H:%M UTC')}"
+                )
                 all_times.extend(vtimes_local)
 
             ax3.axvline(x=now_local, color="black", linestyle=":", label="Now")
-            add_night_shading(ax3, all_times, local_tz_name, local_tz, lat, lon)
+            add_night_shading(ax3, all_times, local_tz_name, local_tz, DEFAULT_LAT, DEFAULT_LON)
             ax3.set_ylim(0, min(max_val + 10, 100) if max_val is not None else 100)
             ax3.legend(loc="center left", bbox_to_anchor=(1, 0.5))
             ax3.grid(True)
@@ -884,7 +899,7 @@ with col2:
 
 try:
     tide_station_id = tide_station_options[tide_station_label]
-    today_local = datetime.now().date()
+    today_local = datetime.now(pytz.timezone(LOCAL_TZ_NAME)).date()
     begin_date = today_local.strftime("%Y%m%d")
     end_date = (today_local + timedelta(days=int(tide_days))).strftime("%Y%m%d")
 
@@ -919,5 +934,4 @@ try:
         )
 except Exception as e:
     st.error(f"Tide load failed: {e}")
-
 
