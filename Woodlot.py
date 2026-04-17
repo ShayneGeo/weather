@@ -1331,6 +1331,18 @@ default_lon = -105.307
 
 st.title("NOAA Weather + HRRR Forecast (Local Time)")
 
+
+
+import streamlit.components.v1 as components
+
+radar_url = "https://radar.weather.gov/?settings=v1_eyJhZ2VuZGEiOnsiaWQiOm51bGwsImNlbnRlciI6Wy0xMDQuNjQyLDQwLjYxNV0sImxvY2F0aW9uIjpudWxsLCJ6b29tIjo5LjQxNDc4ODkzNzU0MDJ9LCJhbmltYXRpbmciOnRydWUsImJhc2UiOiJzdGFuZGFyZCIsImFydGNjIjpmYWxzZSwiY291bnR5IjpmYWxzZSwiY3dhIjpmYWxzZSwicmZjIjpmYWxzZSwic3RhdGUiOmZhbHNlLCJtZW51Ijp0cnVlLCJzaG9ydEZ1c2VkT25seSI6ZmFsc2UsIm9wYWNpdHkiOnsiYWxlcnRzIjowLjgsImxvY2FsIjowLjYsImxvY2FsU3RhdGlvbnMiOjAuOCwibmF0aW9uYWwiOjAuNn19"
+
+st.subheader("Live NWS Radar")
+components.iframe(radar_url, height=700, scrolling=True)
+
+
+
+
 # ---------------------------
 # NOAA Forecast Retrieval ONLY
 # ---------------------------
