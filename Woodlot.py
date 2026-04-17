@@ -1087,3 +1087,174 @@ st.markdown("---")
 
 
 
+
+
+
+
+# ---------------------------
+# FIRE WEATHER / FIRE OPS AT VERY BOTTOM
+# ---------------------------
+st.header("Fire Weather / Fire Operations")
+
+# --- Active NWS alerts for this point ---
+st.subheader("Active NWS Alerts")
+
+try:
+    alerts_url = f"https://api.weather.gov/alerts/active?point={default_lat},{default_lon}"
+    alerts_response = requests.get(alerts_url, timeout=30, headers={"User-Agent": "streamlit-fire-weather-app"})
+    alerts_features = []
+
+    if alerts_response.status_code == 200:
+        alerts_json = alerts_response.json()
+        alerts_features = alerts_json.get("features", [])
+    else:
+        st.warning(f"Could not retrieve alerts. Status code: {alerts_response.status_code}")
+
+    if alerts_features:
+        for feature in alerts_features:
+            props = feature.get("properties", {})
+            event = props.get("event", "Unknown Alert")
+            headline = props.get("headline", "")
+            severity = props.get("severity", "Unknown")
+            urgency = props.get("urgency", "Unknown")
+            area_desc = props.get("areaDesc", "Unknown area")
+            description = props.get("description", "No description available.")
+            instruction = props.get("instruction", "")
+
+            with st.expander(f"{event} | Severity: {severity} | Urgency: {urgency}", expanded=False):
+                st.markdown(f"**Area:** {area_desc}")
+                if headline:
+                    st.markdown(f"**Headline:** {headline}")
+                st.markdown(f"**Description:** {description}")
+                if instruction:
+                    st.markdown(f"**Instructions:** {instruction}")
+    else:
+        st.success("No active NWS alerts found for this location.")
+
+except Exception as e:
+    st.error(f"Error retrieving active alerts: {e}")
+
+st.markdown("---")
+
+# --- Fire weather screening summary from existing HRRR series ---
+st.subheader("Fire Weather Screening Summary")
+
+try:
+    # Flatten the existing HRRR forecast series already built above
+    all_gust_mph = []
+    all_rh_vals = []
+    all_tmp_f = []
+    all_valid_times = []
+
+    for init_time_utc, vtimes_local, fvalues in all_forecast_gust:
+        gust_mph = fvalues * 2.23694
+        for t, v in zip(vtimes_local, gust_mph):
+            if np.isfinite(v):
+                all_valid_times.append(t)
+                all_gust_mph.append(float(v))
+
+    for init_time_utc, vtimes_local, fvalues in all_forecast_rh:
+        rh_vals = fvalues
+        for v in rh_vals:
+            if np.isfinite(v):
+                all_rh_vals.append(float(v))
+
+    for init_time_utc, vtimes_local, fvalues in all_forecast_tmp:
+        tmp_f = (fvalues - 273.15) * 9 / 5 + 32
+        for v in tmp_f:
+            if np.isfinite(v):
+                all_tmp_f.append(float(v))
+
+    max_gust = max(all_gust_mph) if all_gust_mph else None
+    min_rh = min(all_rh_vals) if all_rh_vals else None
+    max_tmp = max(all_tmp_f) if all_tmp_f else None
+
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("Max HRRR Gust", f"{max_gust:.1f} mph" if max_gust is not None else "N/A")
+    with col2:
+        st.metric("Min HRRR RH", f"{min_rh:.1f} %" if min_rh is not None else "N/A")
+    with col3:
+        st.metric("Max HRRR Temp", f"{max_tmp:.1f} °F" if max_tmp is not None else "N/A")
+
+    # Simple screening logic
+    screening_flags = []
+    if max_gust is not None and max_gust >= 25:
+        screening_flags.append("Strong gust potential")
+    if min_rh is not None and min_rh <= 25:
+        screening_flags.append("Very low relative humidity")
+    if max_tmp is not None and max_tmp >= 75:
+        screening_flags.append("Warm temperatures supportive of drying")
+
+    if len(screening_flags) >= 2:
+        st.warning("Elevated fire-weather concern based on the forecast screening metrics below.")
+    elif len(screening_flags) == 1:
+        st.info("Some fire-weather concern is showing up in the forecast screening metrics.")
+    else:
+        st.success("No obvious elevated fire-weather screening signal from the current HRRR series.")
+
+    st.markdown("**Screening notes:**")
+    if screening_flags:
+        for item in screening_flags:
+            st.markdown(f"- {item}")
+    else:
+        st.markdown("- No screening thresholds were exceeded.")
+
+    # Build a compact hourly table from matching forecast lengths
+    rows = []
+    if all_forecast_gust and all_forecast_rh and all_forecast_tmp:
+        # Use the most recent HRRR cycle from each variable
+        gust_times = all_forecast_gust[-1][1]
+        gust_vals = all_forecast_gust[-1][2] * 2.23694
+
+        rh_times = all_forecast_rh[-1][1]
+        rh_vals = all_forecast_rh[-1][2]
+
+        tmp_times = all_forecast_tmp[-1][1]
+        tmp_vals = (all_forecast_tmp[-1][2] - 273.15) * 9 / 5 + 32
+
+        n = min(len(gust_times), len(rh_times), len(tmp_times), len(gust_vals), len(rh_vals), len(tmp_vals))
+
+        for i in range(n):
+            local_flag = []
+            if np.isfinite(gust_vals[i]) and gust_vals[i] >= 25:
+                local_flag.append("gusty")
+            if np.isfinite(rh_vals[i]) and rh_vals[i] <= 25:
+                local_flag.append("low RH")
+            if np.isfinite(tmp_vals[i]) and tmp_vals[i] >= 75:
+                local_flag.append("warm")
+
+            rows.append({
+                "Local Time": gust_times[i].strftime("%Y-%m-%d %I:%M %p"),
+                "Gust (mph)": round(float(gust_vals[i]), 1) if np.isfinite(gust_vals[i]) else np.nan,
+                "RH (%)": round(float(rh_vals[i]), 1) if np.isfinite(rh_vals[i]) else np.nan,
+                "Temp (°F)": round(float(tmp_vals[i]), 1) if np.isfinite(tmp_vals[i]) else np.nan,
+                "Watchout": ", ".join(local_flag) if local_flag else ""
+            })
+
+    if rows:
+        fire_df = pd.DataFrame(rows)
+        st.dataframe(fire_df, use_container_width=True, hide_index=True)
+    else:
+        st.info("No hourly fire-weather table could be built from the current HRRR data.")
+
+except Exception as e:
+    st.error(f"Error building fire-weather summary: {e}")
+
+st.markdown("---")
+
+# --- Optional quick links / context ---
+st.subheader("Fire Weather Context")
+st.markdown(
+    """
+    - This section is a quick screening tool built from NWS alerts plus HRRR gust, RH, and temperature.
+    - It is useful for spotting periods that may deserve more attention.
+    - It is not an official Red Flag Warning or Fire Weather Watch product.
+    """
+)
+
+
+
+
+
+
