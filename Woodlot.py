@@ -625,7 +625,7 @@ from matplotlib.colors import LinearSegmentedColormap
 default_lat = 40.65
 default_lon = -105.307
 
-st.title("NOAA Weather + HRRR Forecast (Local Time)")
+st.title("Woodlot Lane NOAA Weather + HRRR Forecast + RADAR")
 
 radar_url = "https://radar.weather.gov/?settings=v1_eyJhZ2VuZGEiOnsiaWQiOm51bGwsImNlbnRlciI6Wy0xMDUuMzAxLDQwLjI1MV0sImxvY2F0aW9uIjpudWxsLCJ6b29tIjo4LjEwNDQwNjA1NjQwMzYxfSwiYW5pbWF0aW5nIjpmYWxzZSwiYmFzZSI6InN0YW5kYXJkIiwiYXJ0Y2MiOmZhbHNlLCJjb3VudHkiOmZhbHNlLCJjd2EiOmZhbHNlLCJyZmMiOmZhbHNlLCJzdGF0ZSI6ZmFsc2UsIm1lbnUiOnRydWUsInNob3J0RnVzZWRPbmx5IjpmYWxzZSwib3BhY2l0eSI6eyJhbGVydHMiOjAuOCwibG9jYWwiOjAuNiwibG9jYWxTdGF0aW9ucyI6MC44LCJuYXRpb25hbCI6MC42fX0%3D"
 
