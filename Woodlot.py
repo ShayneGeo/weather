@@ -1090,183 +1090,183 @@ st.markdown("---")
 
 
 
-# ---------------------------
-# OFFICIAL FIRE WEATHER / FIRE INFO + NOAA RADAR AT BOTTOM
-# ---------------------------
+# # ---------------------------
+# # OFFICIAL FIRE WEATHER / FIRE INFO + NOAA RADAR AT BOTTOM
+# # ---------------------------
 
-st.markdown("---")
-st.header("Official Fire Weather / Fire Information")
+# st.markdown("---")
+# st.header("Official Fire Weather / Fire Information")
 
-# --- Official government links ---
-col_link1, col_link2, col_link3, col_link4 = st.columns(4)
+# # --- Official government links ---
+# col_link1, col_link2, col_link3, col_link4 = st.columns(4)
 
-with col_link1:
-    st.link_button("NWS Boulder Fire Weather", "https://www.weather.gov/bou/fire")
+# with col_link1:
+#     st.link_button("NWS Boulder Fire Weather", "https://www.weather.gov/bou/fire")
 
-with col_link2:
-    st.link_button("Fire Weather Zone Forecast", "https://www.weather.gov/bou/firewxfcstmap")
+# with col_link2:
+#     st.link_button("Fire Weather Zone Forecast", "https://www.weather.gov/bou/firewxfcstmap")
 
-with col_link3:
-    st.link_button("SPC Fire Weather Outlook", "https://www.spc.noaa.gov/products/fire_wx/")
+# with col_link3:
+#     st.link_button("SPC Fire Weather Outlook", "https://www.spc.noaa.gov/products/fire_wx/")
 
-with col_link4:
-    st.link_button("Open NOAA Radar", radar_url)
+# with col_link4:
+#     st.link_button("Open NOAA Radar", radar_url)
 
-# --- Active official NWS alerts for this exact point ---
-st.subheader("Active NWS Alerts for This Location")
+# # --- Active official NWS alerts for this exact point ---
+# st.subheader("Active NWS Alerts for This Location")
 
-try:
-    nws_headers = {
-        "User-Agent": "streamlit-fire-weather-app",
-        "Accept": "application/geo+json"
-    }
+# try:
+#     nws_headers = {
+#         "User-Agent": "streamlit-fire-weather-app",
+#         "Accept": "application/geo+json"
+#     }
 
-    alerts_url = f"https://api.weather.gov/alerts/active?point={default_lat},{default_lon}"
-    alerts_response = requests.get(alerts_url, headers=nws_headers, timeout=30)
+#     alerts_url = f"https://api.weather.gov/alerts/active?point={default_lat},{default_lon}"
+#     alerts_response = requests.get(alerts_url, headers=nws_headers, timeout=30)
 
-    if alerts_response.status_code == 200:
-        alerts_json = alerts_response.json()
-        alert_features = alerts_json.get("features", [])
+#     if alerts_response.status_code == 200:
+#         alerts_json = alerts_response.json()
+#         alert_features = alerts_json.get("features", [])
 
-        if alert_features:
-            for feature in alert_features:
-                props = feature.get("properties", {})
-                event = props.get("event", "Unknown Alert")
-                headline = props.get("headline", "")
-                severity = props.get("severity", "Unknown")
-                urgency = props.get("urgency", "Unknown")
-                certainty = props.get("certainty", "Unknown")
-                area_desc = props.get("areaDesc", "Unknown area")
-                effective = props.get("effective", "")
-                expires = props.get("expires", "")
-                sender = props.get("senderName", "NWS")
-                description = props.get("description", "No description available.")
-                instruction = props.get("instruction", "")
+#         if alert_features:
+#             for feature in alert_features:
+#                 props = feature.get("properties", {})
+#                 event = props.get("event", "Unknown Alert")
+#                 headline = props.get("headline", "")
+#                 severity = props.get("severity", "Unknown")
+#                 urgency = props.get("urgency", "Unknown")
+#                 certainty = props.get("certainty", "Unknown")
+#                 area_desc = props.get("areaDesc", "Unknown area")
+#                 effective = props.get("effective", "")
+#                 expires = props.get("expires", "")
+#                 sender = props.get("senderName", "NWS")
+#                 description = props.get("description", "No description available.")
+#                 instruction = props.get("instruction", "")
 
-                title = f"{event} | Severity: {severity} | Urgency: {urgency}"
+#                 title = f"{event} | Severity: {severity} | Urgency: {urgency}"
 
-                with st.expander(title, expanded=False):
-                    st.markdown(f"**Sender:** {sender}")
-                    st.markdown(f"**Area:** {area_desc}")
-                    if headline:
-                        st.markdown(f"**Headline:** {headline}")
-                    if effective:
-                        st.markdown(f"**Effective:** {effective}")
-                    if expires:
-                        st.markdown(f"**Expires:** {expires}")
-                    st.markdown(f"**Certainty:** {certainty}")
-                    st.markdown("**Description:**")
-                    st.write(description)
-                    if instruction:
-                        st.markdown("**Instructions:**")
-                        st.write(instruction)
-        else:
-            st.success("No active NWS alerts were found for this point.")
-    else:
-        st.warning(f"Could not retrieve NWS alerts. Status code: {alerts_response.status_code}")
+#                 with st.expander(title, expanded=False):
+#                     st.markdown(f"**Sender:** {sender}")
+#                     st.markdown(f"**Area:** {area_desc}")
+#                     if headline:
+#                         st.markdown(f"**Headline:** {headline}")
+#                     if effective:
+#                         st.markdown(f"**Effective:** {effective}")
+#                     if expires:
+#                         st.markdown(f"**Expires:** {expires}")
+#                     st.markdown(f"**Certainty:** {certainty}")
+#                     st.markdown("**Description:**")
+#                     st.write(description)
+#                     if instruction:
+#                         st.markdown("**Instructions:**")
+#                         st.write(instruction)
+#         else:
+#             st.success("No active NWS alerts were found for this point.")
+#     else:
+#         st.warning(f"Could not retrieve NWS alerts. Status code: {alerts_response.status_code}")
 
-except Exception as e:
-    st.error(f"Error retrieving NWS alerts: {e}")
+# except Exception as e:
+#     st.error(f"Error retrieving NWS alerts: {e}")
 
-# --- Official local fire weather resources ---
-st.subheader("Official Local Fire Weather Resources")
+# # --- Official local fire weather resources ---
+# st.subheader("Official Local Fire Weather Resources")
 
-resource_data = pd.DataFrame([
-    {
-        "Resource": "NWS Boulder Fire Weather Page",
-        "Link": "https://www.weather.gov/bou/fire",
-        "Notes": "Official local fire weather landing page for the Boulder/Denver forecast office."
-    },
-    {
-        "Resource": "Fire Weather Zone Forecast Map",
-        "Link": "https://www.weather.gov/bou/firewxfcstmap",
-        "Notes": "Official fire weather zone forecast page and map."
-    },
-    {
-        "Resource": "Colorado Fire Weather Hazards",
-        "Link": "https://www.weather.gov/bou/Colorado_FireWx",
-        "Notes": "Official local hazards and fire weather support page."
-    },
-    {
-        "Resource": "NWS Boulder Spot Request",
-        "Link": "https://www.weather.gov/bou/spotrequest",
-        "Notes": "Official spot forecast request page."
-    },
-    {
-        "Resource": "SPC Fire Weather Outlook",
-        "Link": "https://www.spc.noaa.gov/products/fire_wx/",
-        "Notes": "Official NOAA Storm Prediction Center fire weather outlook."
-    }
-])
+# resource_data = pd.DataFrame([
+#     {
+#         "Resource": "NWS Boulder Fire Weather Page",
+#         "Link": "https://www.weather.gov/bou/fire",
+#         "Notes": "Official local fire weather landing page for the Boulder/Denver forecast office."
+#     },
+#     {
+#         "Resource": "Fire Weather Zone Forecast Map",
+#         "Link": "https://www.weather.gov/bou/firewxfcstmap",
+#         "Notes": "Official fire weather zone forecast page and map."
+#     },
+#     {
+#         "Resource": "Colorado Fire Weather Hazards",
+#         "Link": "https://www.weather.gov/bou/Colorado_FireWx",
+#         "Notes": "Official local hazards and fire weather support page."
+#     },
+#     {
+#         "Resource": "NWS Boulder Spot Request",
+#         "Link": "https://www.weather.gov/bou/spotrequest",
+#         "Notes": "Official spot forecast request page."
+#     },
+#     {
+#         "Resource": "SPC Fire Weather Outlook",
+#         "Link": "https://www.spc.noaa.gov/products/fire_wx/",
+#         "Notes": "Official NOAA Storm Prediction Center fire weather outlook."
+#     }
+# ])
 
-for _, row in resource_data.iterrows():
-    st.markdown(f"**{row['Resource']}**")
-    st.markdown(f"{row['Notes']}")
-    st.link_button(f"Open {row['Resource']}", row["Link"])
-    st.markdown("")
+# for _, row in resource_data.iterrows():
+#     st.markdown(f"**{row['Resource']}**")
+#     st.markdown(f"{row['Notes']}")
+#     st.link_button(f"Open {row['Resource']}", row["Link"])
+#     st.markdown("")
 
-# --- Simple fire-weather summary using your existing HRRR series ---
-st.subheader("Forecast Screening Summary")
+# # --- Simple fire-weather summary using your existing HRRR series ---
+# st.subheader("Forecast Screening Summary")
 
-try:
-    latest_gust_max = None
-    latest_rh_min = None
-    latest_temp_max = None
+# try:
+#     latest_gust_max = None
+#     latest_rh_min = None
+#     latest_temp_max = None
 
-    if all_forecast_gust:
-        gust_vals = all_forecast_gust[-1][2] * 2.23694
-        finite_gust = gust_vals[np.isfinite(gust_vals)]
-        if finite_gust.size > 0:
-            latest_gust_max = float(np.nanmax(finite_gust))
+#     if all_forecast_gust:
+#         gust_vals = all_forecast_gust[-1][2] * 2.23694
+#         finite_gust = gust_vals[np.isfinite(gust_vals)]
+#         if finite_gust.size > 0:
+#             latest_gust_max = float(np.nanmax(finite_gust))
 
-    if all_forecast_rh:
-        rh_vals = all_forecast_rh[-1][2]
-        finite_rh = rh_vals[np.isfinite(rh_vals)]
-        if finite_rh.size > 0:
-            latest_rh_min = float(np.nanmin(finite_rh))
+#     if all_forecast_rh:
+#         rh_vals = all_forecast_rh[-1][2]
+#         finite_rh = rh_vals[np.isfinite(rh_vals)]
+#         if finite_rh.size > 0:
+#             latest_rh_min = float(np.nanmin(finite_rh))
 
-    if all_forecast_tmp:
-        tmp_vals_f = (all_forecast_tmp[-1][2] - 273.15) * 9 / 5 + 32
-        finite_tmp = tmp_vals_f[np.isfinite(tmp_vals_f)]
-        if finite_tmp.size > 0:
-            latest_temp_max = float(np.nanmax(finite_tmp))
+#     if all_forecast_tmp:
+#         tmp_vals_f = (all_forecast_tmp[-1][2] - 273.15) * 9 / 5 + 32
+#         finite_tmp = tmp_vals_f[np.isfinite(tmp_vals_f)]
+#         if finite_tmp.size > 0:
+#             latest_temp_max = float(np.nanmax(finite_tmp))
 
-    mcol1, mcol2, mcol3 = st.columns(3)
-    with mcol1:
-        st.metric("Max Gust (latest HRRR cycle)", f"{latest_gust_max:.1f} mph" if latest_gust_max is not None else "N/A")
-    with mcol2:
-        st.metric("Min RH (latest HRRR cycle)", f"{latest_rh_min:.1f} %" if latest_rh_min is not None else "N/A")
-    with mcol3:
-        st.metric("Max Temp (latest HRRR cycle)", f"{latest_temp_max:.1f} °F" if latest_temp_max is not None else "N/A")
+#     mcol1, mcol2, mcol3 = st.columns(3)
+#     with mcol1:
+#         st.metric("Max Gust (latest HRRR cycle)", f"{latest_gust_max:.1f} mph" if latest_gust_max is not None else "N/A")
+#     with mcol2:
+#         st.metric("Min RH (latest HRRR cycle)", f"{latest_rh_min:.1f} %" if latest_rh_min is not None else "N/A")
+#     with mcol3:
+#         st.metric("Max Temp (latest HRRR cycle)", f"{latest_temp_max:.1f} °F" if latest_temp_max is not None else "N/A")
 
-    watchouts = []
-    if latest_gust_max is not None and latest_gust_max >= 25:
-        watchouts.append("gusty conditions")
-    if latest_rh_min is not None and latest_rh_min <= 25:
-        watchouts.append("very low RH")
-    if latest_temp_max is not None and latest_temp_max >= 75:
-        watchouts.append("warm temperatures")
+#     watchouts = []
+#     if latest_gust_max is not None and latest_gust_max >= 25:
+#         watchouts.append("gusty conditions")
+#     if latest_rh_min is not None and latest_rh_min <= 25:
+#         watchouts.append("very low RH")
+#     if latest_temp_max is not None and latest_temp_max >= 75:
+#         watchouts.append("warm temperatures")
 
-    if len(watchouts) >= 2:
-        st.warning("The latest HRRR cycle suggests elevated fire-weather concern.")
-    elif len(watchouts) == 1:
-        st.info("The latest HRRR cycle suggests at least one fire-weather watchout.")
-    else:
-        st.success("The latest HRRR cycle does not show an obvious fire-weather signal from these simple screening fields.")
+#     if len(watchouts) >= 2:
+#         st.warning("The latest HRRR cycle suggests elevated fire-weather concern.")
+#     elif len(watchouts) == 1:
+#         st.info("The latest HRRR cycle suggests at least one fire-weather watchout.")
+#     else:
+#         st.success("The latest HRRR cycle does not show an obvious fire-weather signal from these simple screening fields.")
 
-    if watchouts:
-        st.markdown("**Watchouts identified:**")
-        for w in watchouts:
-            st.markdown(f"- {w}")
+#     if watchouts:
+#         st.markdown("**Watchouts identified:**")
+#         for w in watchouts:
+#             st.markdown(f"- {w}")
 
-except Exception as e:
-    st.error(f"Error building forecast screening summary: {e}")
+# except Exception as e:
+#     st.error(f"Error building forecast screening summary: {e}")
 
-# --- NOAA radar at very bottom ---
-st.markdown("---")
-st.header("NOAA Radar")
-components.iframe(radar_url, height=700, scrolling=True)
-st.markdown("---")
+# # --- NOAA radar at very bottom ---
+# st.markdown("---")
+# st.header("NOAA Radar")
+# components.iframe(radar_url, height=700, scrolling=True)
+# st.markdown("---")
 
 
 
